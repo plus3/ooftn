@@ -6,7 +6,10 @@ import (
 	"github.com/plus3/ooftn/ecs"
 )
 
-func TestQuery(t *testing.T) {
+func setupQueryTest() (*ecs.Storage, *ecs.Query[struct {
+	*Position
+	*Velocity
+}]) {
 	registry := ecs.NewComponentRegistry()
 	ecs.RegisterComponent[Position](registry)
 	ecs.RegisterComponent[Velocity](registry)
@@ -24,9 +27,12 @@ func TestQuery(t *testing.T) {
 		*Velocity
 	}](storage)
 
-	t.Run("execute builds cache", func(t *testing.T) {
-		query.Execute()
+	return storage, query
+}
 
+func TestQuery(t *testing.T) {
+	t.Run("iterates correct number of entities", func(t *testing.T) {
+		_, query := setupQueryTest()
 		count := 0
 		for range query.Iter() {
 			count++
@@ -37,25 +43,8 @@ func TestQuery(t *testing.T) {
 		}
 	})
 
-	t.Run("panics without execute", func(t *testing.T) {
-		freshQuery := ecs.NewQuery[struct {
-			*Position
-			*Velocity
-		}](storage)
-
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic when calling Iter() before Execute()")
-			}
-		}()
-
-		for range freshQuery.Iter() {
-		}
-	})
-
-	t.Run("multiple iterations use cache", func(t *testing.T) {
-		query.Execute()
-
+	t.Run("multiple iterations are consistent", func(t *testing.T) {
+		_, query := setupQueryTest()
 		results1 := make(map[ecs.EntityId]bool)
 		for id := range query.Iter() {
 			results1[id] = true
@@ -77,17 +66,14 @@ func TestQuery(t *testing.T) {
 		}
 	})
 
-	t.Run("cache reflects new spawns after re-execute", func(t *testing.T) {
-		query.Execute()
-
+	t.Run("finds newly spawned entities", func(t *testing.T) {
+		storage, query := setupQueryTest()
 		initialCount := 0
 		for range query.Iter() {
 			initialCount++
 		}
 
 		storage.Spawn(Position{X: 10, Y: 10}, Velocity{DX: 2.0, DY: 2.0})
-
-		query.Execute()
 
 		afterSpawnCount := 0
 		for range query.Iter() {
@@ -100,8 +86,7 @@ func TestQuery(t *testing.T) {
 	})
 
 	t.Run("iter values", func(t *testing.T) {
-		query.Execute()
-
+		_, query := setupQueryTest()
 		count := 0
 		for item := range query.Values() {
 			if item.Position == nil || item.Velocity == nil {
@@ -110,8 +95,8 @@ func TestQuery(t *testing.T) {
 			count++
 		}
 
-		if count != 4 {
-			t.Errorf("expected 4 entities, got %d", count)
+		if count != 3 {
+			t.Errorf("expected 3 entities, got %d", count)
 		}
 	})
 }

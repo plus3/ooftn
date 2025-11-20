@@ -4,14 +4,19 @@ import (
 	"iter"
 	"reflect"
 	"unsafe"
+
+	"golang.org/x/tools/container/intsets"
 )
 
 // View represents a query for entities with a specific combination of components
 // The type T should be a struct with embedded pointer fields for each component type
 // Named fields can be marked as optional using the `ecs:"optional"` struct tag
 type View[T any] struct {
-	storage     *Storage
-	types       []reflect.Type
+	storage *Storage
+	types   []reflect.Type
+
+	typeSet *intsets.Sparse
+
 	optional    []bool
 	fieldOffset []uintptr
 
@@ -39,6 +44,7 @@ func NewView[T any](storage *Storage) *View[T] {
 	types := make([]reflect.Type, 0, structType.NumField())
 	optional := make([]bool, 0, structType.NumField())
 	fieldOffset := make([]uintptr, 0, structType.NumField())
+	typeSet := &intsets.Sparse{}
 
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
@@ -65,6 +71,11 @@ func NewView[T any](storage *Storage) *View[T] {
 				}
 			}
 		}
+
+		if !isOptional {
+			typeSet.Insert(typeId(componentType))
+		}
+
 		optional = append(optional, isOptional)
 	}
 
@@ -96,6 +107,7 @@ func NewView[T any](storage *Storage) *View[T] {
 	return &View[T]{
 		storage:             storage,
 		types:               types,
+		typeSet:             typeSet,
 		optional:            optional,
 		fieldOffset:         fieldOffset,
 		cachedSortedIndices: sortedIndices,
@@ -178,17 +190,7 @@ func (v *View[T]) GetRef(ref *EntityRef) *T {
 // matchesArchetype checks if an archetype contains all the required component types for this view
 // Optional components are not checked - they may or may not be present
 func (v *View[T]) matchesArchetype(archetype *Archetype) bool {
-	for i, requiredType := range v.types {
-		// Skip optional components
-		if v.optional[i] {
-			continue
-		}
-		// Required component must be present
-		if !archetype.HasComponent(requiredType) {
-			return false
-		}
-	}
-	return true
+	return v.typeSet.SubsetOf(archetype.typeSet)
 }
 
 func (v *View[T]) buildStorageIndices(archetype *Archetype) []int {

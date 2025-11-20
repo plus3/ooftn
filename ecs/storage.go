@@ -274,6 +274,11 @@ func extractComponentTypes(components []any) []reflect.Type {
 	return types
 }
 
+func typeId(t reflect.Type) int {
+	ptr := (*iface)(unsafe.Pointer(&t)).data
+	return int(uintptr(ptr))
+}
+
 // hashTypesToUint32 generates a uint32 hash for a sorted slice of types
 func hashTypesToUint32(types []reflect.Type) uint32 {
 	var h uint32 = 2166136261     // FNV-1a 32-bit offset basis

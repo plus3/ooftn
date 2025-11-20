@@ -265,7 +265,6 @@ func BenchmarkQueryIter(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		query.Execute()
 		for _, pv := range query.Iter() {
 			_ = pv
 		}
@@ -289,7 +288,6 @@ func BenchmarkQueryIterLarge(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		query.Execute()
 		for _, pv := range query.Iter() {
 			_ = pv
 		}
