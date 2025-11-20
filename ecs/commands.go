@@ -1,0 +1,87 @@
+package ecs
+
+import "reflect"
+
+// Commands provides a buffer for deferred ECS operations that are executed at the end of a frame.
+// This prevents structural changes to the ECS storage during system execution.
+type Commands struct {
+	storage *Storage
+	spawns  []spawnCommand
+	deletes []EntityId
+	adds    []addComponentCommand
+	removes []removeComponentCommand
+}
+
+func newCommands(storage *Storage) *Commands {
+	return &Commands{storage: storage}
+}
+
+type spawnCommand struct {
+	components []any
+}
+
+type addComponentCommand struct {
+	entity    EntityId
+	component any
+}
+
+type removeComponentCommand struct {
+	entity   EntityId
+	compType reflect.Type
+}
+
+// Spawn queues an entity spawn operation with the given components.
+func (c *Commands) Spawn(components ...any) {
+	c.spawns = append(c.spawns, spawnCommand{components: components})
+}
+
+// Delete queues an entity deletion operation.
+func (c *Commands) Delete(entity EntityId) {
+	c.deletes = append(c.deletes, entity)
+}
+
+// AddComponent queues a component addition operation.
+func (c *Commands) AddComponent(entity EntityId, component any) {
+	c.adds = append(c.adds, addComponentCommand{
+		entity:    entity,
+		component: component,
+	})
+}
+
+// RemoveComponent queues a component removal operation.
+func (c *Commands) RemoveComponent(entity EntityId, compType reflect.Type) {
+	c.removes = append(c.removes, removeComponentCommand{
+		entity:   entity,
+		compType: compType,
+	})
+}
+
+func (c *Commands) flush() {
+	deletedEntities := make(map[EntityId]bool)
+
+	for _, cmd := range c.deletes {
+		c.storage.Delete(cmd)
+		deletedEntities[cmd] = true
+	}
+
+	for _, cmd := range c.removes {
+		if !deletedEntities[cmd.entity] {
+			c.storage.RemoveComponent(cmd.entity, cmd.compType)
+		}
+	}
+
+	for _, cmd := range c.adds {
+		if !deletedEntities[cmd.entity] {
+			c.storage.AddComponent(cmd.entity, cmd.component)
+		}
+	}
+
+	for _, cmd := range c.spawns {
+		c.storage.Spawn(cmd.components...)
+	}
+
+	c.spawns = c.spawns[:0]
+	c.deletes = c.deletes[:0]
+	c.adds = c.adds[:0]
+	c.removes = c.removes[:0]
+}
