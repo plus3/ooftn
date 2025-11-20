@@ -15,9 +15,11 @@ type View[T any] struct {
 	optional    []bool
 	fieldOffset []uintptr
 
-	// Cache for the archetype ID that matches all required (non-optional) components
-	// This is computed once and reused for Spawn operations
-	cachedArchetypeId *uint32
+	cachedArchetypeId   *uint32
+	cachedSortedTypes   []reflect.Type
+	cachedSortedIndices []int
+	cachedRequiredCount int
+	cachedArchetype     *Archetype
 }
 
 // NewView creates a new view for the given struct type
@@ -64,11 +66,39 @@ func NewView[T any](storage *Storage) *View[T] {
 		optional = append(optional, isOptional)
 	}
 
+	requiredCount := 0
+	for _, opt := range optional {
+		if !opt {
+			requiredCount++
+		}
+	}
+
+	sortedIndices := make([]int, len(types))
+	for i := range sortedIndices {
+		sortedIndices[i] = i
+	}
+
+	for i := range sortedIndices {
+		for j := i + 1; j < len(sortedIndices); j++ {
+			if types[sortedIndices[i]].String() > types[sortedIndices[j]].String() {
+				sortedIndices[i], sortedIndices[j] = sortedIndices[j], sortedIndices[i]
+			}
+		}
+	}
+
+	sortedTypes := make([]reflect.Type, len(types))
+	for i, idx := range sortedIndices {
+		sortedTypes[i] = types[idx]
+	}
+
 	return &View[T]{
-		storage:     storage,
-		types:       types,
-		optional:    optional,
-		fieldOffset: fieldOffset,
+		storage:             storage,
+		types:               types,
+		optional:            optional,
+		fieldOffset:         fieldOffset,
+		cachedSortedIndices: sortedIndices,
+		cachedSortedTypes:   sortedTypes,
+		cachedRequiredCount: requiredCount,
 	}
 }
 
@@ -243,58 +273,75 @@ func (v *View[T]) Values() iter.Seq[T] {
 func (v *View[T]) Spawn(data T) EntityId {
 	structPtr := unsafe.Pointer(&data)
 
-	components := make([]any, 0, len(v.types))
-	componentTypes := make([]reflect.Type, 0, len(v.types))
+	allRequired := true
+	componentCount := 0
 	for i := 0; i < len(v.types); i++ {
 		fieldPtr := unsafe.Pointer(uintptr(structPtr) + v.fieldOffset[i])
-
 		componentPtr := *(*unsafe.Pointer)(fieldPtr)
 
 		if componentPtr == nil {
 			if !v.optional[i] {
 				panic("required component is nil in View.Spawn")
 			}
+			allRequired = false
+		} else {
+			componentCount++
+		}
+	}
+
+	if componentCount == 0 {
+		panic("cannot spawn entity without components")
+	}
+
+	if allRequired && v.cachedArchetype != nil {
+		components := make([]any, len(v.cachedSortedIndices))
+		for i, idx := range v.cachedSortedIndices {
+			fieldPtr := unsafe.Pointer(uintptr(structPtr) + v.fieldOffset[idx])
+			componentPtr := *(*unsafe.Pointer)(fieldPtr)
+			componentType := v.types[idx]
+			component := reflect.NewAt(componentType, componentPtr).Elem().Interface()
+			components[i] = component
+		}
+
+		entityIndex := v.cachedArchetype.Spawn(components)
+		return NewEntityId(*v.cachedArchetypeId, entityIndex)
+	}
+
+	components := make([]any, 0, componentCount)
+	componentIndices := make([]int, 0, componentCount)
+	for i := 0; i < len(v.types); i++ {
+		fieldPtr := unsafe.Pointer(uintptr(structPtr) + v.fieldOffset[i])
+		componentPtr := *(*unsafe.Pointer)(fieldPtr)
+
+		if componentPtr == nil {
 			continue
 		}
 
 		componentType := v.types[i]
 		component := reflect.NewAt(componentType, componentPtr).Elem().Interface()
 		components = append(components, component)
-		componentTypes = append(componentTypes, componentType)
+		componentIndices = append(componentIndices, i)
 	}
 
-	if len(components) == 0 {
-		panic("cannot spawn entity without components")
-	}
+	sortedComponents := make([]any, len(components))
+	sortedTypes := make([]reflect.Type, len(components))
 
-	sortedIndices := make([]int, len(componentTypes))
-	for i := range sortedIndices {
-		sortedIndices[i] = i
-	}
-
-	for i := range sortedIndices {
-		for j := i + 1; j < len(sortedIndices); j++ {
-			if componentTypes[sortedIndices[i]].String() > componentTypes[sortedIndices[j]].String() {
-				sortedIndices[i], sortedIndices[j] = sortedIndices[j], sortedIndices[i]
+	sortIdx := 0
+	for _, idx := range v.cachedSortedIndices {
+		for j, compIdx := range componentIndices {
+			if compIdx == idx {
+				sortedComponents[sortIdx] = components[j]
+				sortedTypes[sortIdx] = v.types[idx]
+				sortIdx++
+				break
 			}
 		}
 	}
 
-	sortedComponents := make([]any, len(components))
-	sortedTypes := make([]reflect.Type, len(componentTypes))
-	for i, idx := range sortedIndices {
-		sortedComponents[i] = components[idx]
-		sortedTypes[i] = componentTypes[idx]
-	}
+	archetypeId := hashTypesToUint32(sortedTypes)
 
-	var archetypeId uint32
-	if v.cachedArchetypeId != nil && len(sortedTypes) == len(v.requiredTypes()) {
-		archetypeId = *v.cachedArchetypeId
-	} else {
-		archetypeId = hashTypesToUint32(sortedTypes)
-		if len(sortedTypes) == len(v.requiredTypes()) {
-			v.cachedArchetypeId = &archetypeId
-		}
+	if allRequired {
+		v.cachedArchetypeId = &archetypeId
 	}
 
 	archetype, exists := v.storage.archetypes[archetypeId]
@@ -303,17 +350,10 @@ func (v *View[T]) Spawn(data T) EntityId {
 		v.storage.archetypes[archetypeId] = archetype
 	}
 
+	if allRequired {
+		v.cachedArchetype = archetype
+	}
+
 	entityIndex := archetype.Spawn(sortedComponents)
 	return NewEntityId(archetypeId, entityIndex)
-}
-
-// requiredTypes returns a slice of only the required (non-optional) component types
-func (v *View[T]) requiredTypes() []reflect.Type {
-	required := make([]reflect.Type, 0, len(v.types))
-	for i, typ := range v.types {
-		if !v.optional[i] {
-			required = append(required, typ)
-		}
-	}
-	return required
 }
