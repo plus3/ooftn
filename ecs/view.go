@@ -152,6 +152,47 @@ func (v *View[T]) matchesArchetype(archetype *Archetype) bool {
 	return true
 }
 
+func (v *View[T]) buildStorageIndices(archetype *Archetype) []int {
+	storageIndices := make([]int, len(v.types))
+	for i, componentType := range v.types {
+		storageIndices[i] = -1
+		for idx, archetypeType := range archetype.types {
+			if archetypeType == componentType {
+				storageIndices[i] = idx
+				break
+			}
+		}
+	}
+	return storageIndices
+}
+
+func (v *View[T]) populateResult(resultPtr unsafe.Pointer, archetype *Archetype, entityIndex int, storageIndices []int) bool {
+	for i, storageIdx := range storageIndices {
+		fieldPtr := unsafe.Pointer(uintptr(resultPtr) + v.fieldOffset[i])
+
+		if storageIdx == -1 {
+			if v.optional[i] {
+				*(*unsafe.Pointer)(fieldPtr) = nil
+				continue
+			}
+			return false
+		}
+
+		component := archetype.storages[storageIdx].Get(entityIndex)
+		if component == nil {
+			if v.optional[i] {
+				*(*unsafe.Pointer)(fieldPtr) = nil
+				continue
+			}
+			return false
+		}
+
+		componentPtr := (*iface)(unsafe.Pointer(&component)).data
+		*(*unsafe.Pointer)(fieldPtr) = componentPtr
+	}
+	return true
+}
+
 // Iter returns an iterator over all entities that have all the required components for this view
 // The iterator yields (EntityId, T) pairs where T is the populated view struct
 // Optional components are set to nil if not present
@@ -162,62 +203,22 @@ func (v *View[T]) Iter() iter.Seq2[EntityId, T] {
 				continue
 			}
 
-			// Pre-compute the mapping from view component types to archetype storage indices
-			storageIndices := make([]int, len(v.types))
-			for i, componentType := range v.types {
-				storageIndices[i] = -1
-				for idx, archetypeType := range archetype.types {
-					if archetypeType == componentType {
-						storageIndices[i] = idx
-						break
-					}
-				}
-			}
-
 			if len(archetype.storages) == 0 {
 				continue
 			}
+
+			storageIndices := v.buildStorageIndices(archetype)
 			firstStorage := archetype.storages[0]
 
 			var result T
 			resultPtr := unsafe.Pointer(&result)
 
 			for entityIndex := range firstStorage.Iter() {
-				entityId := NewEntityId(archetypeId, uint32(entityIndex))
-
-				allRequiredComponentsFound := true
-				for i, storageIdx := range storageIndices {
-					fieldPtr := unsafe.Pointer(uintptr(resultPtr) + v.fieldOffset[i])
-
-					if storageIdx == -1 {
-						if v.optional[i] {
-							*(*unsafe.Pointer)(fieldPtr) = nil
-							continue
-						} else {
-							allRequiredComponentsFound = false
-							break
-						}
-					}
-
-					component := archetype.storages[storageIdx].Get(entityIndex)
-					if component == nil {
-						if v.optional[i] {
-							*(*unsafe.Pointer)(fieldPtr) = nil
-							continue
-						} else {
-							allRequiredComponentsFound = false
-							break
-						}
-					}
-
-					componentPtr := (*iface)(unsafe.Pointer(&component)).data
-					*(*unsafe.Pointer)(fieldPtr) = componentPtr
-				}
-
-				if !allRequiredComponentsFound {
+				if !v.populateResult(resultPtr, archetype, entityIndex, storageIndices) {
 					continue
 				}
 
+				entityId := NewEntityId(archetypeId, uint32(entityIndex))
 				if !yield(entityId, result) {
 					return
 				}
@@ -315,69 +316,4 @@ func (v *View[T]) requiredTypes() []reflect.Type {
 		}
 	}
 	return required
-}
-
-// iterArchetype returns an iterator over entities in a specific archetype
-func (v *View[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
-	return func(yield func(EntityId, T) bool) {
-		storageIndices := make([]int, len(v.types))
-		for i, componentType := range v.types {
-			storageIndices[i] = -1
-			for idx, archetypeType := range archetype.types {
-				if archetypeType == componentType {
-					storageIndices[i] = idx
-					break
-				}
-			}
-		}
-
-		if len(archetype.storages) == 0 {
-			return
-		}
-		firstStorage := archetype.storages[0]
-
-		var result T
-		resultPtr := unsafe.Pointer(&result)
-
-		for entityIndex := range firstStorage.Iter() {
-			entityId := NewEntityId(archetype.id, uint32(entityIndex))
-
-			allRequiredComponentsFound := true
-			for i, storageIdx := range storageIndices {
-				fieldPtr := unsafe.Pointer(uintptr(resultPtr) + v.fieldOffset[i])
-
-				if storageIdx == -1 {
-					if v.optional[i] {
-						*(*unsafe.Pointer)(fieldPtr) = nil
-						continue
-					} else {
-						allRequiredComponentsFound = false
-						break
-					}
-				}
-
-				component := archetype.storages[storageIdx].Get(entityIndex)
-				if component == nil {
-					if v.optional[i] {
-						*(*unsafe.Pointer)(fieldPtr) = nil
-						continue
-					} else {
-						allRequiredComponentsFound = false
-						break
-					}
-				}
-
-				componentPtr := (*iface)(unsafe.Pointer(&component)).data
-				*(*unsafe.Pointer)(fieldPtr) = componentPtr
-			}
-
-			if !allRequiredComponentsFound {
-				continue
-			}
-
-			if !yield(entityId, result) {
-				return
-			}
-		}
-	}
 }
