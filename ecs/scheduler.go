@@ -78,7 +78,7 @@ func (s *Scheduler) Once(dt float64) {
 		system.Execute(frame)
 	}
 
-	frame.Commands.flush()
+	frame.Commands.Flush(s.storage)
 
 	s.invalidateQueries()
 }

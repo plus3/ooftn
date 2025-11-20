@@ -226,9 +226,9 @@ func (v *View[T]) Iter() iter.Seq2[EntityId, T] {
 	}
 }
 
-// IterValues returns an iterator over just the view structs (without entity IDs)
+// Values returns an iterator over just the view structs (without entity IDs)
 // This is useful when you only care about the component data, not which entity it belongs to
-func (v *View[T]) IterValues() iter.Seq[T] {
+func (v *View[T]) Values() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, value := range v.Iter() {
 			if !yield(value) {
@@ -380,28 +380,4 @@ func (v *View[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
 			}
 		}
 	}
-}
-
-// extractComponents extracts component values from a view struct
-func (v *View[T]) extractComponents(data T) []any {
-	structPtr := unsafe.Pointer(&data)
-
-	components := make([]any, 0, len(v.types))
-	for i := 0; i < len(v.types); i++ {
-		fieldPtr := unsafe.Pointer(uintptr(structPtr) + v.fieldOffset[i])
-		componentPtr := *(*unsafe.Pointer)(fieldPtr)
-
-		if componentPtr == nil {
-			if !v.optional[i] {
-				panic("required component is nil")
-			}
-			continue
-		}
-
-		componentType := v.types[i]
-		component := reflect.NewAt(componentType, componentPtr).Elem().Interface()
-		components = append(components, component)
-	}
-
-	return components
 }

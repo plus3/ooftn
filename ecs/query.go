@@ -93,11 +93,11 @@ func (q *Query[T]) Iter() iter.Seq2[EntityId, T] {
 	}
 }
 
-// IterValues returns an iterator over component data only.
+// Values returns an iterator over component data only.
 // Panics if Execute() has not been called this frame.
-func (q *Query[T]) IterValues() iter.Seq[T] {
+func (q *Query[T]) Values() iter.Seq[T] {
 	if !q.cacheValid {
-		panic("Query.IterValues() called before Query.Execute()")
+		panic("Query.Values() called before Query.Execute()")
 	}
 
 	return func(yield func(T) bool) {

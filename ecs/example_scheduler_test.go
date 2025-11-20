@@ -32,7 +32,7 @@ type PhysicsSystem struct {
 
 func (s *PhysicsSystem) Execute(frame *ecs.UpdateFrame) {
 	// Iterate over all entities with Transform and Speed components
-	for entity := range s.Entities.IterValues() {
+	for entity := range s.Entities.Values() {
 		entity.Transform.X += entity.Speed.DX * float32(frame.DeltaTime)
 		entity.Transform.Y += entity.Speed.DY * float32(frame.DeltaTime)
 	}
@@ -47,7 +47,7 @@ type HealingSystem struct {
 }
 
 func (s *HealingSystem) Execute(frame *ecs.UpdateFrame) {
-	for entity := range s.Entities.IterValues() {
+	for entity := range s.Entities.Values() {
 		// Regenerate hitpoints if not at max
 		if entity.Hitpoints.Current < entity.Hitpoints.Max {
 			entity.Hitpoints.Current += int(s.RegenRate * float32(frame.DeltaTime))

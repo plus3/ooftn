@@ -10,7 +10,7 @@ import (
 )
 
 func TestView(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	entityId := storage.Spawn(&Position{
 		X: 1,
@@ -30,7 +30,7 @@ func TestView(t *testing.T) {
 }
 
 func TestViewMultipleComponents(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	entityId := storage.Spawn(
 		&Position{X: 10, Y: 20},
@@ -54,7 +54,7 @@ func TestViewMultipleComponents(t *testing.T) {
 }
 
 func TestViewMissingComponent(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	// Entity only has Position, not Velocity
 	entityId := storage.Spawn(&Position{X: 5, Y: 10})
@@ -70,7 +70,7 @@ func TestViewMissingComponent(t *testing.T) {
 }
 
 func TestViewFill(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	entityId := storage.Spawn(&Position{X: 3, Y: 4}, &Health{Current: 50, Max: 100})
 
@@ -94,7 +94,7 @@ func TestViewFill(t *testing.T) {
 }
 
 func TestViewFillMissingComponent(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	entityId := storage.Spawn(&Position{X: 1, Y: 2})
 
@@ -114,7 +114,7 @@ func TestViewFillMissingComponent(t *testing.T) {
 }
 
 func TestViewComponentMutation(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	entityId := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0, DY: 0})
 
@@ -143,7 +143,7 @@ func TestViewComponentMutation(t *testing.T) {
 }
 
 func TestViewWithPrimitiveComponents(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	entityId := storage.Spawn(&Position{X: 7, Y: 8}, Score(1000))
 
@@ -166,7 +166,7 @@ func TestViewWithPrimitiveComponents(t *testing.T) {
 }
 
 func TestViewInvalidEntityId(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	fakeId := ecs.NewEntityId(9999, 9999)
 
@@ -180,7 +180,7 @@ func TestViewInvalidEntityId(t *testing.T) {
 }
 
 func TestViewMultipleEntities(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Create multiple entities with same components
@@ -211,7 +211,7 @@ func TestViewMultipleEntities(t *testing.T) {
 }
 
 func TestViewSubset(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Entity has more components than the view requires
@@ -235,7 +235,7 @@ func TestViewSubset(t *testing.T) {
 }
 
 func TestViewIter(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Spawn entities with Position and Velocity
@@ -279,7 +279,7 @@ func TestViewIter(t *testing.T) {
 }
 
 func TestViewIterEmpty(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	view := ecs.NewView[struct {
@@ -296,7 +296,7 @@ func TestViewIterEmpty(t *testing.T) {
 }
 
 func TestViewIterMultipleArchetypes(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Create entities with different archetype combinations
@@ -333,8 +333,8 @@ func TestViewIterMultipleArchetypes(t *testing.T) {
 	assert.True(t, entities[id4])
 }
 
-func TestViewIterValues(t *testing.T) {
-	
+func TestViewValues(t *testing.T) {
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	storage.Spawn(&Position{X: 1, Y: 10}, &Velocity{DX: 0.1, DY: 1.0})
@@ -348,7 +348,7 @@ func TestViewIterValues(t *testing.T) {
 
 	// Collect X values
 	xValues := make([]float32, 0)
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		xValues = append(xValues, item.Position.X)
 	}
 
@@ -359,7 +359,7 @@ func TestViewIterValues(t *testing.T) {
 }
 
 func TestViewIterMutation(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	id1 := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0, DY: 0})
@@ -392,7 +392,7 @@ func TestViewIterMutation(t *testing.T) {
 }
 
 func TestViewIterEarlyBreak(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0.1, DY: 0.1})
@@ -419,7 +419,7 @@ func TestViewIterEarlyBreak(t *testing.T) {
 }
 
 func TestViewIterWithDeletedEntities(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	id1 := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0.1, DY: 0.1})
@@ -450,7 +450,7 @@ func TestViewIterWithDeletedEntities(t *testing.T) {
 }
 
 func TestViewIterLargeDataset(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	const numEntities = 1000
@@ -482,7 +482,7 @@ func TestViewIterLargeDataset(t *testing.T) {
 }
 
 func TestViewIterWithPrimitives(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	storage.Spawn(&Position{X: 1, Y: 1}, Score(100))
@@ -504,7 +504,7 @@ func TestViewIterWithPrimitives(t *testing.T) {
 
 // ExampleView demonstrates basic view usage for querying single entities
 func ExampleView() {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Spawn entities with different component combinations
@@ -546,7 +546,7 @@ func ExampleView() {
 
 // ExampleView_Iter demonstrates iterating over all entities matching a view
 func ExampleView_Iter() {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Spawn multiple entities
@@ -582,7 +582,7 @@ func ExampleView_Iter() {
 
 // ExampleView_Iter_update demonstrates updating components during iteration
 func ExampleView_Iter_update() {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Spawn entities
@@ -598,7 +598,7 @@ func ExampleView_Iter_update() {
 
 	// Update all entities: apply velocity to position
 	fmt.Println("Applying velocity to position:")
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		oldX, oldY := item.Position.X, item.Position.Y
 		item.Position.X += item.Velocity.DX
 		item.Position.Y += item.Velocity.DY
@@ -615,7 +615,7 @@ func ExampleView_Iter_update() {
 
 // ExampleView_multipleArchetypes demonstrates views matching across different archetypes
 func ExampleView_multipleArchetypes() {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Archetype 1: Position + Velocity
@@ -639,7 +639,7 @@ func ExampleView_multipleArchetypes() {
 	// This will match entities from archetypes 1, 2, and 3 (all have Position + Velocity)
 	count := 0
 	positions := make([]float32, 0)
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		count++
 		positions = append(positions, item.Position.X)
 	}
@@ -667,7 +667,7 @@ func ExampleView_multipleArchetypes() {
 
 // ExampleView_filtering demonstrates filtering entities during iteration
 func ExampleView_filtering() {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Spawn entities with different health values
@@ -684,7 +684,7 @@ func ExampleView_filtering() {
 
 	// Find entities with low health (< 50)
 	fmt.Println("Entities with low health:")
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		if item.Health.Current < 50 {
 			fmt.Printf("Position (%.0f, %.0f): health %d/%d\n",
 				item.Position.X, item.Position.Y,
@@ -701,7 +701,7 @@ func ExampleView_filtering() {
 // Tests for optional component support
 
 func TestViewOptionalComponent(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Entity with both components
@@ -731,7 +731,7 @@ func TestViewOptionalComponent(t *testing.T) {
 }
 
 func TestViewOptionalIterMixedArchetypes(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Archetype 1: Position + Velocity
@@ -775,7 +775,7 @@ func TestViewOptionalIterMixedArchetypes(t *testing.T) {
 }
 
 func TestViewMultipleOptionalComponents(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// All components
@@ -794,7 +794,7 @@ func TestViewMultipleOptionalComponents(t *testing.T) {
 	}](storage)
 
 	count := 0
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		count++
 		assert.NotNil(t, item.Position)
 		// Velocity and Health may or may not be present
@@ -804,7 +804,7 @@ func TestViewMultipleOptionalComponents(t *testing.T) {
 }
 
 func TestViewOptionalMutation(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	id1 := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 1, DY: 1})
@@ -816,7 +816,7 @@ func TestViewOptionalMutation(t *testing.T) {
 	}](storage)
 
 	// Mutate through iterator
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		if item.Velocity != nil {
 			item.Velocity.DX *= 2
 			item.Velocity.DY *= 2
@@ -834,7 +834,7 @@ func TestViewOptionalMutation(t *testing.T) {
 }
 
 func TestViewAllOptional(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	storage.Spawn(&Velocity{DX: 1, DY: 1})
@@ -848,7 +848,7 @@ func TestViewAllOptional(t *testing.T) {
 	}](storage)
 
 	count := 0
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		count++
 		// At least one should be present (otherwise entity wouldn't exist)
 		assert.True(t, item.Velocity != nil || item.Health != nil)
@@ -858,7 +858,7 @@ func TestViewAllOptional(t *testing.T) {
 }
 
 func TestViewFillWithOptional(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	id1 := storage.Spawn(&Position{X: 10, Y: 20}, &Velocity{DX: 1, DY: 2})
@@ -891,7 +891,7 @@ func TestViewFillWithOptional(t *testing.T) {
 }
 
 func TestViewEmbeddedAndOptionalMixed(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	id1 := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0.1, DY: 0.1}, &Health{Current: 100, Max: 100})
@@ -920,7 +920,7 @@ func TestViewEmbeddedAndOptionalMixed(t *testing.T) {
 }
 
 func TestViewInvalidTag(t *testing.T) {
-	
+
 	defer func() {
 		r := recover()
 		assert.NotNil(t, r)
@@ -937,7 +937,7 @@ func TestViewInvalidTag(t *testing.T) {
 }
 
 func TestViewOptionalWithDeletedEntities(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	id1 := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0.1, DY: 0.1})
@@ -965,7 +965,7 @@ func TestViewOptionalWithDeletedEntities(t *testing.T) {
 }
 
 func TestViewOptionalDoesNotAffectRequiredMatching(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Entity missing required component (Health)
@@ -993,7 +993,7 @@ func TestViewOptionalDoesNotAffectRequiredMatching(t *testing.T) {
 // Tests for View.Spawn functionality
 
 func TestViewSpawn(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1019,7 +1019,7 @@ func TestViewSpawn(t *testing.T) {
 }
 
 func TestViewSpawnMultipleEntities(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1066,7 +1066,7 @@ func TestViewSpawnMultipleEntities(t *testing.T) {
 }
 
 func TestViewSpawnWithPrimitives(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1094,7 +1094,7 @@ func TestViewSpawnWithPrimitives(t *testing.T) {
 }
 
 func TestViewSpawnWithOptionalComponentsAllPresent(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		Position *Position
@@ -1118,7 +1118,7 @@ func TestViewSpawnWithOptionalComponentsAllPresent(t *testing.T) {
 }
 
 func TestViewSpawnWithOptionalComponentsNil(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		Position *Position
@@ -1143,7 +1143,7 @@ func TestViewSpawnWithOptionalComponentsNil(t *testing.T) {
 }
 
 func TestViewSpawnMixedOptional(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		Position *Position
@@ -1171,7 +1171,7 @@ func TestViewSpawnMixedOptional(t *testing.T) {
 }
 
 func TestViewSpawnNilRequiredComponentPanics(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		Position *Position
@@ -1195,7 +1195,7 @@ func TestViewSpawnNilRequiredComponentPanics(t *testing.T) {
 }
 
 func TestViewSpawnArchetypeCaching(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1234,7 +1234,7 @@ func TestViewSpawnArchetypeCaching(t *testing.T) {
 }
 
 func TestViewSpawnCompatibleWithStorageSpawn(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1267,7 +1267,7 @@ func TestViewSpawnCompatibleWithStorageSpawn(t *testing.T) {
 }
 
 func TestViewSpawnManyComponents(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1297,7 +1297,7 @@ func TestViewSpawnManyComponents(t *testing.T) {
 }
 
 func TestViewSpawnIterateSpawnedEntities(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1327,7 +1327,7 @@ func TestViewSpawnIterateSpawnedEntities(t *testing.T) {
 }
 
 func TestViewSpawnMutateAfterSpawn(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 	view := ecs.NewView[struct {
 		*Position
@@ -1356,7 +1356,7 @@ func TestViewSpawnMutateAfterSpawn(t *testing.T) {
 
 // ExampleView_optional demonstrates using optional components in views
 func ExampleView_optional() {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Entities with different health states
@@ -1381,7 +1381,7 @@ func ExampleView_optional() {
 		health *Health
 	}
 	entities := make([]entityInfo, 0)
-	for item := range view.IterValues() {
+	for item := range view.Values() {
 		entities = append(entities, entityInfo{item.Position.X, item.Position.Y, item.Health})
 	}
 
@@ -1411,7 +1411,7 @@ func ExampleView_optional() {
 }
 
 func TestViewWithPointerComponents(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	enemy := &Name{Value: "Boss"}
@@ -1430,7 +1430,7 @@ func TestViewWithPointerComponents(t *testing.T) {
 }
 
 func TestViewIterWithPointerComponents(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	target1 := &Position{X: 100.0, Y: 200.0}
@@ -1453,7 +1453,7 @@ func TestViewIterWithPointerComponents(t *testing.T) {
 }
 
 func TestViewWithSliceComponent(t *testing.T) {
-	
+
 	storage := ecs.NewStorage(newTestRegistry())
 
 	items := []string{"sword", "shield"}
