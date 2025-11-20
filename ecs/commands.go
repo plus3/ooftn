@@ -5,15 +5,14 @@ import "reflect"
 // Commands provides a buffer for deferred ECS operations that are executed at the end of a frame.
 // This prevents structural changes to the ECS storage during system execution.
 type Commands struct {
-	storage *Storage
 	spawns  []spawnCommand
 	deletes []EntityId
 	adds    []addComponentCommand
 	removes []removeComponentCommand
 }
 
-func newCommands(storage *Storage) *Commands {
-	return &Commands{storage: storage}
+func newCommands() *Commands {
+	return &Commands{}
 }
 
 type spawnCommand struct {
@@ -56,28 +55,29 @@ func (c *Commands) RemoveComponent(entity EntityId, compType reflect.Type) {
 	})
 }
 
-func (c *Commands) flush() {
+// Flush flushes all commands to the provided storage, reseting the buffer state
+func (c *Commands) Flush(storage *Storage) {
 	deletedEntities := make(map[EntityId]bool)
 
 	for _, cmd := range c.deletes {
-		c.storage.Delete(cmd)
+		storage.Delete(cmd)
 		deletedEntities[cmd] = true
 	}
 
 	for _, cmd := range c.removes {
 		if !deletedEntities[cmd.entity] {
-			c.storage.RemoveComponent(cmd.entity, cmd.compType)
+			storage.RemoveComponent(cmd.entity, cmd.compType)
 		}
 	}
 
 	for _, cmd := range c.adds {
 		if !deletedEntities[cmd.entity] {
-			c.storage.AddComponent(cmd.entity, cmd.component)
+			storage.AddComponent(cmd.entity, cmd.component)
 		}
 	}
 
 	for _, cmd := range c.spawns {
-		c.storage.Spawn(cmd.components...)
+		storage.Spawn(cmd.components...)
 	}
 
 	c.spawns = c.spawns[:0]

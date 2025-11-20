@@ -1,6 +1,9 @@
 package ecs
 
-import "iter"
+import (
+	"iter"
+	"unsafe"
+)
 
 // Query wraps a View with caching optimizations for repeated iteration.
 // Queries cache matching archetypes and pre-build entity/component arrays per frame.
@@ -33,6 +36,31 @@ func (q *Query[T]) Init(storage *Storage) {
 	q.cacheValid = false
 }
 
+func (q *Query[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
+	return func(yield func(EntityId, T) bool) {
+		if len(archetype.storages) == 0 {
+			return
+		}
+
+		storageIndices := q.view.buildStorageIndices(archetype)
+		firstStorage := archetype.storages[0]
+
+		var result T
+		resultPtr := unsafe.Pointer(&result)
+
+		for entityIndex := range firstStorage.Iter() {
+			if !q.view.populateResult(resultPtr, archetype, entityIndex, storageIndices) {
+				continue
+			}
+
+			entityId := NewEntityId(archetype.id, uint32(entityIndex))
+			if !yield(entityId, result) {
+				return
+			}
+		}
+	}
+}
+
 // Execute builds the entity and component caches for this frame.
 // Called automatically by the Scheduler before systems run.
 func (q *Query[T]) Execute() {
@@ -43,7 +71,7 @@ func (q *Query[T]) Execute() {
 	q.cachedComponents = q.cachedComponents[:0]
 
 	for _, archetype := range q.cachedArchetypes {
-		for id, item := range q.view.iterArchetype(archetype) {
+		for id, item := range q.iterArchetype(archetype) {
 			q.cachedEntities = append(q.cachedEntities, id)
 			q.cachedComponents = append(q.cachedComponents, item)
 		}
@@ -93,11 +121,11 @@ func (q *Query[T]) Iter() iter.Seq2[EntityId, T] {
 	}
 }
 
-// IterValues returns an iterator over component data only.
+// Values returns an iterator over component data only.
 // Panics if Execute() has not been called this frame.
-func (q *Query[T]) IterValues() iter.Seq[T] {
+func (q *Query[T]) Values() iter.Seq[T] {
 	if !q.cacheValid {
-		panic("Query.IterValues() called before Query.Execute()")
+		panic("Query.Values() called before Query.Execute()")
 	}
 
 	return func(yield func(T) bool) {

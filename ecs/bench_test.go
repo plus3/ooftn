@@ -304,7 +304,7 @@ type benchMovementSystem struct {
 }
 
 func (s *benchMovementSystem) Execute(frame *ecs.UpdateFrame) {
-	for item := range s.Entities.IterValues() {
+	for item := range s.Entities.Values() {
 		item.Position.X += item.Velocity.DX * float32(frame.DeltaTime)
 		item.Position.Y += item.Velocity.DY * float32(frame.DeltaTime)
 	}
@@ -317,7 +317,7 @@ type benchHealthSystem struct {
 }
 
 func (s *benchHealthSystem) Execute(frame *ecs.UpdateFrame) {
-	for item := range s.Entities.IterValues() {
+	for item := range s.Entities.Values() {
 		if item.Health.Current < item.Health.Max {
 			item.Health.Current += int(1.0 * float32(frame.DeltaTime))
 		}

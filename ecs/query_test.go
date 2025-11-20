@@ -103,7 +103,7 @@ func TestQuery(t *testing.T) {
 		query.Execute()
 
 		count := 0
-		for item := range query.IterValues() {
+		for item := range query.Values() {
 			if item.Position == nil || item.Velocity == nil {
 				t.Error("expected non-nil components")
 			}
