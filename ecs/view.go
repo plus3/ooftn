@@ -20,6 +20,8 @@ type View[T any] struct {
 	cachedSortedIndices []int
 	cachedRequiredCount int
 	cachedArchetype     *Archetype
+
+	storageIndicesCache map[uint32][]int
 }
 
 // NewView creates a new view for the given struct type
@@ -99,6 +101,7 @@ func NewView[T any](storage *Storage) *View[T] {
 		cachedSortedIndices: sortedIndices,
 		cachedSortedTypes:   sortedTypes,
 		cachedRequiredCount: requiredCount,
+		storageIndicesCache: make(map[uint32][]int),
 	}
 }
 
@@ -112,28 +115,34 @@ func (v *View[T]) Fill(id EntityId, ptr *T) bool {
 		return false
 	}
 
-	// Use unsafe.Pointer to directly access the struct's memory
-	// This avoids reflection overhead in the hot path
+	storageIndices, ok := v.storageIndicesCache[archetypeId]
+	if !ok {
+		storageIndices = v.buildStorageIndices(archetype)
+		v.storageIndicesCache[archetypeId] = storageIndices
+	}
+
 	structPtr := unsafe.Pointer(ptr)
+	entityIndex := int(id.Index())
 
 	for i := 0; i < len(v.types); i++ {
-		componentType := v.types[i]
-		component := archetype.GetComponent(id.Index(), componentType)
-
-		// Calculate the address of the field using the pre-computed offset
 		fieldPtr := unsafe.Pointer(uintptr(structPtr) + v.fieldOffset[i])
 
-		if component == nil {
-			// If this is a required component, fail
+		storageIdx := storageIndices[i]
+		if storageIdx == -1 {
 			if !v.optional[i] {
 				return false
 			}
-			// Optional component is missing, set field to nil
-			// For pointer fields, nil is represented as a zero pointer
+			*(*unsafe.Pointer)(fieldPtr) = nil
+			continue
+		}
+
+		component := archetype.storages[storageIdx].Get(entityIndex)
+		if component == nil {
+			if !v.optional[i] {
+				return false
+			}
 			*(*unsafe.Pointer)(fieldPtr) = nil
 		} else {
-			// Component found, set the field to point to the component
-			// We need to extract the pointer from the interface{}
 			componentPtr := (*iface)(unsafe.Pointer(&component)).data
 			*(*unsafe.Pointer)(fieldPtr) = componentPtr
 		}
@@ -237,7 +246,12 @@ func (v *View[T]) Iter() iter.Seq2[EntityId, T] {
 				continue
 			}
 
-			storageIndices := v.buildStorageIndices(archetype)
+			storageIndices, ok := v.storageIndicesCache[archetypeId]
+			if !ok {
+				storageIndices = v.buildStorageIndices(archetype)
+				v.storageIndicesCache[archetypeId] = storageIndices
+			}
+
 			firstStorage := archetype.storages[0]
 
 			var result T
