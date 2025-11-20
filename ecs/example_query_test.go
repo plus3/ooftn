@@ -6,11 +6,10 @@ import (
 	"github.com/plus3/ooftn/ecs"
 )
 
-// ExampleQuery demonstrates using queries within systems for high-performance
-// iteration. Queries cache matching archetypes and pre-build entity/component
-// arrays each frame, making them significantly faster than Views for repeated
-// iteration. The Scheduler automatically calls Execute() on queries before
-// systems run, keeping the cache synchronized with the current frame's state.
+// ExampleQuery demonstrates using queries for high-performance iteration.
+// Unlike Views, Queries cache the list of matching archetypes, which provides
+// a significant performance boost for repeated iteration, as the set of
+// matching archetypes doesn't need to be re-calculated each time.
 func ExampleQuery() {
 	registry := ecs.NewComponentRegistry()
 	ecs.RegisterComponent[Position](registry)
@@ -26,8 +25,6 @@ func ExampleQuery() {
 		*Position
 		*Velocity
 	}](storage)
-
-	query.Execute()
 
 	type result struct {
 		x, y, newX, newY float32

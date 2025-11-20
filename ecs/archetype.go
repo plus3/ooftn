@@ -2,10 +2,10 @@ package ecs
 
 import (
 	"reflect"
-	"slices"
 	"weak"
 
 	"github.com/kamstrup/intmap"
+	"golang.org/x/tools/container/intsets"
 )
 
 type byTypeName []reflect.Type
@@ -20,6 +20,8 @@ type Archetype struct {
 	types    []reflect.Type
 	storages []iComponentStorage
 	refs     *intmap.Map[EntityId, weak.Pointer[EntityRef]]
+
+	typeSet *intsets.Sparse
 }
 
 // NewArchetype creates a new archetype with the given ID and sorted component types
@@ -29,10 +31,12 @@ func NewArchetype(id uint32, types []reflect.Type, registry *ComponentRegistry) 
 		types:    types,
 		storages: make([]iComponentStorage, len(types)),
 		refs:     intmap.New[EntityId, weak.Pointer[EntityRef]](256),
+		typeSet:  &intsets.Sparse{},
 	}
 
 	// Initialize storage for each component type
 	for idx, typ := range types {
+		a.typeSet.Insert(typeId(typ))
 		factory := registry.getFactory(typ)
 		if factory == nil {
 			panic("component type " + typ.String() + " not registered")
@@ -102,7 +106,7 @@ func (a *Archetype) Delete(entityIndex uint32) {
 
 // HasComponent checks if this archetype has the given component type
 func (a *Archetype) HasComponent(compType reflect.Type) bool {
-	return slices.Contains(a.types, compType)
+	return a.typeSet.Has(typeId(compType))
 }
 
 // ID returns the archetype's unique identifier

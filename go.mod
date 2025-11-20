@@ -5,6 +5,7 @@ go 1.25.4
 require (
 	github.com/kamstrup/intmap v0.5.1
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/tools v0.39.0
 )
 
 require (

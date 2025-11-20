@@ -6,16 +6,12 @@ import (
 )
 
 // Query wraps a View with caching optimizations for repeated iteration.
-// Queries cache matching archetypes and pre-build entity/component arrays per frame.
+// Queries cache matching archetypes to avoid re-calculating this on every run.
 type Query[T any] struct {
 	view               *View[T]
 	storage            *Storage
 	cachedArchetypes   []*Archetype
 	lastArchetypeCount int
-
-	cachedEntities   []EntityId
-	cachedComponents []T
-	cacheValid       bool
 }
 
 // NewQuery creates a new Query with archetype-level caching.
@@ -33,7 +29,6 @@ func (q *Query[T]) Init(storage *Storage) {
 	q.view = NewView[T](storage)
 	q.storage = storage
 	q.lastArchetypeCount = -1
-	q.cacheValid = false
 }
 
 func (q *Query[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
@@ -61,29 +56,6 @@ func (q *Query[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
 	}
 }
 
-// Execute builds the entity and component caches for this frame.
-// Called automatically by the Scheduler before systems run.
-func (q *Query[T]) Execute() {
-	q.invalidateIfNeeded()
-	q.ensureArchetypeCache()
-
-	q.cachedEntities = q.cachedEntities[:0]
-	q.cachedComponents = q.cachedComponents[:0]
-
-	for _, archetype := range q.cachedArchetypes {
-		for id, item := range q.iterArchetype(archetype) {
-			q.cachedEntities = append(q.cachedEntities, id)
-			q.cachedComponents = append(q.cachedComponents, item)
-		}
-	}
-
-	q.cacheValid = true
-}
-
-func (q *Query[T]) invalidateCache() {
-	q.cacheValid = false
-}
-
 func (q *Query[T]) invalidateIfNeeded() {
 	currentCount := len(q.storage.archetypes)
 	if currentCount != q.lastArchetypeCount {
@@ -106,32 +78,32 @@ func (q *Query[T]) ensureArchetypeCache() {
 }
 
 // Iter returns an iterator over entity IDs and component data.
-// Panics if Execute() has not been called this frame.
 func (q *Query[T]) Iter() iter.Seq2[EntityId, T] {
-	if !q.cacheValid {
-		panic("Query.Iter() called before Query.Execute()")
-	}
-
 	return func(yield func(EntityId, T) bool) {
-		for i := range q.cachedEntities {
-			if !yield(q.cachedEntities[i], q.cachedComponents[i]) {
-				return
+		q.invalidateIfNeeded()
+		q.ensureArchetypeCache()
+
+		for _, archetype := range q.cachedArchetypes {
+			for id, item := range q.iterArchetype(archetype) {
+				if !yield(id, item) {
+					return
+				}
 			}
 		}
 	}
 }
 
 // Values returns an iterator over component data only.
-// Panics if Execute() has not been called this frame.
 func (q *Query[T]) Values() iter.Seq[T] {
-	if !q.cacheValid {
-		panic("Query.Values() called before Query.Execute()")
-	}
-
 	return func(yield func(T) bool) {
-		for i := range q.cachedComponents {
-			if !yield(q.cachedComponents[i]) {
-				return
+		q.invalidateIfNeeded()
+		q.ensureArchetypeCache()
+
+		for _, archetype := range q.cachedArchetypes {
+			for _, item := range q.iterArchetype(archetype) {
+				if !yield(item) {
+					return
+				}
 			}
 		}
 	}
