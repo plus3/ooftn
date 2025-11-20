@@ -1,5 +1,7 @@
 package main
 
+//go:generate go run github.com/plus3/ooftn/cmd/ecs-stress/generator -components=250 -systems=50
+
 import (
 	"context"
 	"flag"
@@ -108,7 +110,7 @@ Loop:
 	if err := report.Generate(os.Stdout); err != nil {
 		log.Fatalf("Failed to generate report: %v", err)
 	}
-	fmt.Println("--- End of Report ---\n")
+	fmt.Println("--- End of Report ---")
 
 	log.Println("Stress test complete.")
 }
