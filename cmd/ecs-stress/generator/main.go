@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"os"
 	"text/template"
-	"time"
 )
 
 const (
@@ -21,8 +20,6 @@ func main() {
 	componentCount := flag.Int("components", 250, "number of components to generate")
 	systemCount := flag.Int("systems", 50, "number of systems to generate")
 	flag.Parse()
-
-	rand.Seed(time.Now().UnixNano())
 
 	log.Printf("Generating %d components and %d systems...\n", *componentCount, *systemCount)
 
@@ -81,11 +78,11 @@ var fieldTypes = []struct {
 
 func generateComponentData(count int) []Component {
 	components := make([]Component, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		numFields := rand.Intn(8) + 1
 		fields := make([]Field, numFields)
 		totalSize := 0
-		for j := 0; j < numFields; j++ {
+		for j := range numFields {
 			fieldType := fieldTypes[rand.Intn(len(fieldTypes))]
 			fields[j] = Field{
 				Name: fmt.Sprintf("Field%d", j),
@@ -109,6 +106,7 @@ package main
 
 import (
 	"math/rand"
+
 	"github.com/plus3/ooftn/ecs"
 )
 
@@ -127,10 +125,6 @@ func RegisterAllGeneratedComponents(registry *ecs.ComponentRegistry) {
 }
 
 func SpawnRandomEntity(storage *ecs.Storage, numComponents int) {
-	// This is tricky because spawn is variadic. We'll build up a slice
-	// of components and then pass them. This requires reflection.
-	// A simpler, if less efficient, way for the test is a big switch.
-
 	components := make([]any, numComponents)
 	for i := 0; i < numComponents; i++ {
 		componentID := rand.Intn({{len .}})
@@ -159,13 +153,13 @@ func generateSystemData(components []Component, count int) []System {
 		return systems
 	}
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		// Pick 1 to 4 components for the query
 		numComps := rand.Intn(4) + 1
 		queryComps := make([]Component, 0, numComps)
 		compSet := make(map[int]struct{})
 
-		for k := 0; k < numComps; k++ {
+		for range numComps {
 			compIdx := rand.Intn(len(components))
 			if _, exists := compSet[compIdx]; !exists {
 				queryComps = append(queryComps, components[compIdx])

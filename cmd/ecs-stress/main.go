@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"time"
@@ -23,9 +25,20 @@ func main() {
 	duration := flag.Duration("duration", 10*time.Second, "The total duration the test should run for.")
 	entityCount := flag.Int("entities", 10000, "The initial number of entities to create.")
 	gcPauseMetrics := flag.Bool("gc-pause-metrics", false, "Enable detailed GC pause metrics in the report.")
+	pprofAddr := flag.String("pprof", "", "Address to listen on for pprof server (e.g., ':6060')")
 	flag.Parse()
 
+	if *pprofAddr != "" {
+		log.Printf("Starting pprof HTTP server on %s", *pprofAddr)
+		go func() {
+			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
+				log.Printf("Failed to start pprof server: %v", err)
+			}
+		}()
+	}
+
 	log.Println("Starting ECS stress test...")
+	rand.Seed(time.Now().UnixNano())
 
 	// 1. Setup Registry, Storage, and Scheduler
 	registry := ecs.NewComponentRegistry()
@@ -95,7 +108,7 @@ Loop:
 	if err := report.Generate(os.Stdout); err != nil {
 		log.Fatalf("Failed to generate report: %v", err)
 	}
-	fmt.Println("--- End of Report ---")
+	fmt.Println("--- End of Report ---\n")
 
 	log.Println("Stress test complete.")
 }
