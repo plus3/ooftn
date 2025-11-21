@@ -14,8 +14,8 @@ import (
 const (
 	ScreenWidth  = 1280
 	ScreenHeight = 720
-	WorldWidth   = 100
-	WorldHeight  = 100
+	WorldWidth   = 300
+	WorldHeight  = 300
 	CellSize     = 16
 )
 
@@ -65,6 +65,8 @@ func main() {
 	ecs.RegisterComponent[debugui_ebiten.ImguiBackend](registry)
 	ecs.RegisterComponent[debugui.ImguiItem](registry)
 	ecs.RegisterComponent[debugui.ImguiInputState](registry)
+	ecs.RegisterComponent[PerformanceMetrics](registry)
+	ecs.RegisterComponent[SimulationMetrics](registry)
 
 	storage := ecs.NewStorage(registry)
 
@@ -99,17 +101,15 @@ func main() {
 		Cells:    make(map[[2]int][]ecs.EntityId),
 	})
 
-	storage.Spawn(debugui.ImguiItem{
-		Render: func() {
-			imgui.Begin("test")
-			imgui.LabelText("hey", ":3")
-			imgui.End()
-		},
+	ecs.NewSingleton[PerformanceMetrics](storage, PerformanceMetrics{
+		LastFrameSamples: make([]float32, 0, 60),
 	})
+	ecs.NewSingleton[SimulationMetrics](storage, SimulationMetrics{})
 
 	initWorld(storage)
 
 	scheduler := ecs.NewScheduler(storage)
+	scheduler.Register(&MetricsSystem{})
 	scheduler.Register(&debugui.ImguiSystem{})
 	scheduler.Register(&TimeSystem{})
 	scheduler.Register(&ColonyManagementSystem{})
@@ -128,12 +128,15 @@ func main() {
 	renderSystem := &RenderSystem{}
 	renderScheduler.Register(renderSystem)
 
+	initDebugUI(storage, scheduler)
+
 	game := &Game{
 		Storage:         storage,
 		Scheduler:       scheduler,
 		RenderScheduler: renderScheduler,
 		RenderSystem:    renderSystem,
 		ImguiBackend:    ecs.NewSingleton[debugui_ebiten.ImguiBackend](storage),
+		Screen:          ecs.NewSingleton[Screen](storage),
 	}
 
 	if err := ebiten.RunGame(game); err != nil {
@@ -146,8 +149,17 @@ func (g *Game) Update() error {
 		return ebiten.Termination
 	}
 
+	var perf *PerformanceMetrics
+	g.Storage.ReadSingleton(&perf)
+
 	g.ImguiBackend.Get().BeginFrame()
+
 	g.Scheduler.Once(1.0 / 60.0)
+
+	if perf != nil {
+		perf.UpdateTime = float32(1.0 / 60.0)
+	}
+
 	g.ImguiBackend.Get().EndFrame()
 	return nil
 }
@@ -159,8 +171,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		camera.ScreenH = screen.Bounds().Dy()
 	}
 
-	g.RenderSystem.screen = screen
+	g.Screen.Get().Image = screen
+
+	// g.RenderSystem.screen = screen
 	g.RenderScheduler.Once(0)
+
+	var perf *PerformanceMetrics
+	if g.Storage.ReadSingleton(&perf) {
+		perf.RenderTime = float32(1.0 / 60.0)
+	}
+
 	g.ImguiBackend.Get().Draw(screen)
 }
 
@@ -173,10 +193,10 @@ func initWorld(storage *ecs.Storage) {
 	spawnResources(storage)
 
 	colonyPositions := [][2]int{
-		{20, 20},
-		{80, 20},
-		{20, 80},
-		{80, 80},
+		{50, 50},
+		{250, 50},
+		{50, 250},
+		{250, 250},
 	}
 
 	for i, pos := range colonyPositions {
@@ -186,7 +206,7 @@ func initWorld(storage *ecs.Storage) {
 }
 
 func spawnResources(storage *ecs.Storage) {
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 1800; i++ {
 		x := rand.IntN(WorldWidth)
 		y := rand.IntN(WorldHeight)
 

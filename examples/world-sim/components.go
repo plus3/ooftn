@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/plus3/ooftn/ecs"
 	debugui_ebiten "github.com/plus3/ooftn/ecs/debugui/ebiten"
 )
@@ -214,10 +215,38 @@ const (
 	LayerUI
 )
 
+type PerformanceMetrics struct {
+	FPS              float32
+	FrameTime        float32
+	UpdateTime       float32
+	RenderTime       float32
+	EntityCount      int
+	ArchetypeCount   int
+	LastFrameSamples []float32
+	AvgFPS           float32
+	AvgFrameTime     float32
+	MinFrameTime     float32
+	MaxFrameTime     float32
+}
+
+type SimulationMetrics struct {
+	TotalPopulation int
+	TotalResources  int
+	ActiveTasks     int
+	ColonyCount     int
+	ResourceCount   int
+	DeadCount       int
+}
+
+type Screen struct {
+	*ebiten.Image
+}
+
 type Game struct {
 	Storage         *ecs.Storage
 	Scheduler       *ecs.Scheduler
 	RenderScheduler *ecs.Scheduler
 	RenderSystem    *RenderSystem
 	ImguiBackend    *ecs.Singleton[debugui_ebiten.ImguiBackend]
+	Screen          *ecs.Singleton[Screen]
 }

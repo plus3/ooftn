@@ -7,10 +7,38 @@ import (
 	"time"
 )
 
+// SchedulerStats provides statistics about scheduler execution.
+type SchedulerStats struct {
+	SystemCount     int
+	TotalExecutions int64
+	Systems         []SystemStats
+}
+
+// SystemStats provides execution statistics for a single system.
+type SystemStats struct {
+	Name           string
+	ExecutionCount int64
+	MinDuration    time.Duration
+	MaxDuration    time.Duration
+	AvgDuration    time.Duration
+	LastDuration   time.Duration
+	TotalDuration  time.Duration
+}
+
+type systemStatsInternal struct {
+	name           string
+	executionCount int64
+	minDuration    time.Duration
+	maxDuration    time.Duration
+	totalDuration  time.Duration
+	lastDuration   time.Duration
+}
+
 // Scheduler manages and executes systems in order.
 type Scheduler struct {
-	storage *Storage
-	systems []System
+	storage     *Storage
+	systems     []System
+	systemStats []*systemStatsInternal
 }
 
 // NewScheduler creates a new scheduler for the given storage.
@@ -25,6 +53,17 @@ func NewScheduler(storage *Storage) *Scheduler {
 func (s *Scheduler) Register(system System) {
 	s.initializeQueries(system)
 	s.systems = append(s.systems, system)
+
+	systemType := reflect.TypeOf(system)
+	if systemType.Kind() == reflect.Ptr {
+		systemType = systemType.Elem()
+	}
+	systemName := systemType.Name()
+
+	s.systemStats = append(s.systemStats, &systemStatsInternal{
+		name:        systemName,
+		minDuration: time.Duration(1<<63 - 1),
+	})
 }
 
 func (s *Scheduler) initializeQueries(system System) {
@@ -85,8 +124,22 @@ func (s *Scheduler) initializeQueries(system System) {
 func (s *Scheduler) Once(dt float64) {
 	frame := newUpdateFrame(dt, s.storage)
 
-	for _, system := range s.systems {
+	for i, system := range s.systems {
+		start := time.Now()
 		system.Execute(frame)
+		duration := time.Since(start)
+
+		stats := s.systemStats[i]
+		stats.executionCount++
+		stats.lastDuration = duration
+		stats.totalDuration += duration
+
+		if duration < stats.minDuration {
+			stats.minDuration = duration
+		}
+		if duration > stats.maxDuration {
+			stats.maxDuration = duration
+		}
 	}
 
 	frame.Commands.Flush(s.storage)
@@ -109,4 +162,34 @@ func (s *Scheduler) Run(ctx context.Context, interval time.Duration) {
 			s.Once(dt)
 		}
 	}
+}
+
+// GetStats returns statistics about system execution.
+func (s *Scheduler) GetStats() *SchedulerStats {
+	stats := &SchedulerStats{
+		SystemCount: len(s.systems),
+		Systems:     make([]SystemStats, len(s.systemStats)),
+	}
+
+	var totalExecs int64
+	for i, internal := range s.systemStats {
+		avgDuration := time.Duration(0)
+		if internal.executionCount > 0 {
+			avgDuration = internal.totalDuration / time.Duration(internal.executionCount)
+		}
+
+		stats.Systems[i] = SystemStats{
+			Name:           internal.name,
+			ExecutionCount: internal.executionCount,
+			MinDuration:    internal.minDuration,
+			MaxDuration:    internal.maxDuration,
+			AvgDuration:    avgDuration,
+			LastDuration:   internal.lastDuration,
+			TotalDuration:  internal.totalDuration,
+		}
+		totalExecs += internal.executionCount
+	}
+
+	stats.TotalExecutions = totalExecs
+	return stats
 }

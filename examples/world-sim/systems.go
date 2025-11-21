@@ -706,52 +706,80 @@ type RenderSystem struct {
 		*GridPosition
 		*ColonyResources
 	}]
+	Screen ecs.Singleton[Screen]
 
-	screen *ebiten.Image
+	tileCache      *ebiten.Image
+	lastCameraX    float32
+	lastCameraY    float32
+	lastCameraZoom float32
+	tileCacheValid bool
 }
 
 func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
-	if frame.DeltaTime > 0 || s.screen == nil {
-		return
-	}
-
 	camera := s.Camera.Get()
 	config := s.WorldConfig.Get()
 
-	s.screen.Fill(color.RGBA{245, 245, 240, 255})
+	screen := s.Screen.Get().Image
+
+	screen.Fill(color.RGBA{245, 245, 240, 255})
 
 	cellSize := float32(config.CellSize)
 
-	for x := 0; x < config.Width; x++ {
-		for y := 0; y < config.Height; y++ {
-			wx := float32(x) - camera.X
-			wy := float32(y) - camera.Y
-			sx := wx * camera.Zoom * cellSize
-			sy := wy * camera.Zoom * cellSize
-
-			if sx < -cellSize || sy < -cellSize || sx > float32(camera.ScreenW) || sy > float32(camera.ScreenH) {
-				continue
-			}
-
-			gridColor := color.RGBA{230, 230, 225, 255}
-			vector.DrawFilledRect(s.screen, sx, sy, cellSize*camera.Zoom, cellSize*camera.Zoom, gridColor, false)
-			vector.StrokeRect(s.screen, sx, sy, cellSize*camera.Zoom, cellSize*camera.Zoom, 1, color.RGBA{220, 220, 215, 255}, false)
+	cameraMovedSignificantly := false
+	if !s.tileCacheValid || s.lastCameraZoom != camera.Zoom {
+		cameraMovedSignificantly = true
+	} else {
+		dx := camera.X - s.lastCameraX
+		dy := camera.Y - s.lastCameraY
+		threshold := float32(5.0)
+		if dx*dx+dy*dy > threshold*threshold {
+			cameraMovedSignificantly = true
 		}
 	}
+
+	if cameraMovedSignificantly {
+		s.renderTiles(camera, config, cellSize)
+		s.lastCameraX = camera.X
+		s.lastCameraY = camera.Y
+		s.lastCameraZoom = camera.Zoom
+		s.tileCacheValid = true
+	}
+
+	if s.tileCache != nil {
+		opts := &ebiten.DrawImageOptions{}
+		offsetX := (camera.X - s.lastCameraX) * camera.Zoom * cellSize
+		offsetY := (camera.Y - s.lastCameraY) * camera.Zoom * cellSize
+		opts.GeoM.Translate(float64(-offsetX-100), float64(-offsetY-100))
+		screen.DrawImage(s.tileCache, opts)
+	}
+
+	minWorldX := camera.X - 20
+	maxWorldX := camera.X + float32(camera.ScreenW)/(cellSize*camera.Zoom) + 20
+	minWorldY := camera.Y - 20
+	maxWorldY := camera.Y + float32(camera.ScreenH)/(cellSize*camera.Zoom) + 20
 
 	for resource := range s.Resources.Iter() {
 		if resource.Resource.Amount <= 0 {
 			continue
 		}
-		s.renderEntity(resource.Position, resource.Sprite, camera, cellSize)
+		if resource.Position.X < minWorldX || resource.Position.X > maxWorldX || resource.Position.Y < minWorldY || resource.Position.Y > maxWorldY {
+			continue
+		}
+		s.renderEntity(screen, resource.Position, resource.Sprite, camera, cellSize)
 	}
 
 	for structure := range s.Structures.Iter() {
-		s.renderEntity(structure.Position, structure.Sprite, camera, cellSize)
+		if structure.Position.X < minWorldX || structure.Position.X > maxWorldX || structure.Position.Y < minWorldY || structure.Position.Y > maxWorldY {
+			continue
+		}
+		s.renderEntity(screen, structure.Position, structure.Sprite, camera, cellSize)
 	}
 
 	for colonist := range s.Colonists.Iter() {
-		s.renderEntity(colonist.Position, colonist.Sprite, camera, cellSize)
+		if colonist.Position.X < minWorldX || colonist.Position.X > maxWorldX || colonist.Position.Y < minWorldY || colonist.Position.Y > maxWorldY {
+			continue
+		}
+		s.renderEntity(screen, colonist.Position, colonist.Sprite, camera, cellSize)
 
 		wx := colonist.Position.X - camera.X
 		wy := colonist.Position.Y - camera.Y
@@ -762,8 +790,8 @@ func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 		barWidth := cellSize * camera.Zoom * colonist.Sprite.Scale
 		barHeight := float32(2)
 
-		vector.DrawFilledRect(s.screen, sx-barWidth/2, sy-barHeight-5, barWidth, barHeight, color.RGBA{100, 100, 100, 255}, false)
-		vector.DrawFilledRect(s.screen, sx-barWidth/2, sy-barHeight-5, barWidth*healthPct, barHeight, color.RGBA{100, 200, 100, 255}, false)
+		vector.DrawFilledRect(screen, sx-barWidth/2, sy-barHeight-5, barWidth, barHeight, color.RGBA{100, 100, 100, 255}, false)
+		vector.DrawFilledRect(screen, sx-barWidth/2, sy-barHeight-5, barWidth*healthPct, barHeight, color.RGBA{100, 200, 100, 255}, false)
 	}
 
 	for colony := range s.Colonies.Iter() {
@@ -774,17 +802,62 @@ func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 
 		c := color.RGBA{colony.Colony.Color[0], colony.Colony.Color[1], colony.Colony.Color[2], 100}
 		radius := float32(8) * camera.Zoom
-		vector.DrawFilledCircle(s.screen, sx, sy, radius, c, false)
+		vector.DrawFilledCircle(screen, sx, sy, radius, c, false)
 	}
 }
 
-func (s *RenderSystem) renderEntity(pos *Position, sprite *Sprite, camera *Camera, cellSize float32) {
+func (s *RenderSystem) renderTiles(camera *Camera, config *WorldConfig, cellSize float32) {
+	cacheW := camera.ScreenW + 200
+	cacheH := camera.ScreenH + 200
+
+	if s.tileCache == nil || s.tileCache.Bounds().Dx() != cacheW || s.tileCache.Bounds().Dy() != cacheH {
+		s.tileCache = ebiten.NewImage(cacheW, cacheH)
+	}
+	s.tileCache.Clear()
+
+	minX := int(camera.X) - 20
+	maxX := int(camera.X) + camera.ScreenW/int(cellSize*camera.Zoom) + 20
+	minY := int(camera.Y) - 20
+	maxY := int(camera.Y) + camera.ScreenH/int(cellSize*camera.Zoom) + 20
+
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX > config.Width {
+		maxX = config.Width
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxY > config.Height {
+		maxY = config.Height
+	}
+
+	for x := minX; x < maxX; x++ {
+		for y := minY; y < maxY; y++ {
+			wx := float32(x) - camera.X
+			wy := float32(y) - camera.Y
+			sx := wx*camera.Zoom*cellSize + 100
+			sy := wy*camera.Zoom*cellSize + 100
+
+			gridColor := color.RGBA{230, 230, 225, 255}
+			vector.DrawFilledRect(s.tileCache, sx, sy, cellSize*camera.Zoom, cellSize*camera.Zoom, gridColor, false)
+
+			if camera.Zoom > 1.0 {
+				vector.StrokeRect(s.tileCache, sx, sy, cellSize*camera.Zoom, cellSize*camera.Zoom, 1, color.RGBA{220, 220, 215, 255}, false)
+			}
+		}
+	}
+}
+
+func (s *RenderSystem) renderEntity(screen *ebiten.Image, pos *Position, sprite *Sprite, camera *Camera, cellSize float32) {
 	wx := pos.X - camera.X
 	wy := pos.Y - camera.Y
 	sx := wx * camera.Zoom * cellSize
 	sy := wy * camera.Zoom * cellSize
 
-	if sx < -cellSize || sy < -cellSize || sx > float32(camera.ScreenW) || sy > float32(camera.ScreenH) {
+	margin := cellSize * 2
+	if sx < -margin || sy < -margin || sx > float32(camera.ScreenW)+margin || sy > float32(camera.ScreenH)+margin {
 		return
 	}
 
@@ -793,10 +866,10 @@ func (s *RenderSystem) renderEntity(pos *Position, sprite *Sprite, camera *Camer
 
 	switch sprite.Shape {
 	case ShapeCircle:
-		vector.DrawFilledCircle(s.screen, sx, sy, size/2, c, false)
+		vector.DrawFilledCircle(screen, sx, sy, size/2, c, false)
 	case ShapeSquare:
-		vector.DrawFilledRect(s.screen, sx-size/2, sy-size/2, size, size, c, false)
+		vector.DrawFilledRect(screen, sx-size/2, sy-size/2, size, size, c, false)
 	case ShapeTriangle:
-		vector.DrawFilledRect(s.screen, sx-size/2, sy-size/2, size, size, c, false)
+		vector.DrawFilledRect(screen, sx-size/2, sy-size/2, size, size, c, false)
 	}
 }
