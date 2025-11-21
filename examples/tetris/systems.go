@@ -247,20 +247,13 @@ type GravitySystem struct {
 }
 
 func (s *GravitySystem) Execute(frame *ecs.UpdateFrame) {
-	grid := s.Grid.Get()
-	if grid == nil {
-		return
-	}
-
 	gameState := s.GameState.Get()
-	if gameState == nil || gameState.GameOver {
+	if gameState.GameOver {
 		return
 	}
 
+	grid := s.Grid.Get()
 	collisionMap := s.CollisionMap.Get()
-	if collisionMap == nil {
-		return
-	}
 
 	for entity := range s.ActivePiece.Iter() {
 		entity.Velocity.Accumulator += float32(frame.DeltaTime)
@@ -295,15 +288,12 @@ type LockSystem struct {
 }
 
 func (s *LockSystem) Execute(frame *ecs.UpdateFrame) {
-	grid := s.Grid.Get()
-	if grid == nil {
+	gameState := s.GameState.Get()
+	if gameState.GameOver {
 		return
 	}
 
-	gameState := s.GameState.Get()
-	if gameState == nil || gameState.GameOver {
-		return
-	}
+	grid := s.Grid.Get()
 
 	for entity := range s.ActivePiece.Iter() {
 		if gameState.LockDelay >= 0.5 {
@@ -342,14 +332,7 @@ type LineClearSystem struct {
 
 func (s *LineClearSystem) Execute(frame *ecs.UpdateFrame) {
 	grid := s.Grid.Get()
-	if grid == nil {
-		return
-	}
-
 	gameState := s.GameState.Get()
-	if gameState == nil {
-		return
-	}
 
 	rowCounts := make(map[int]int)
 	for y := 0; y < grid.Height; y++ {
@@ -419,20 +402,13 @@ func (s *SpawnSystem) Execute(frame *ecs.UpdateFrame) {
 		return
 	}
 
-	grid := s.Grid.Get()
-	if grid == nil {
-		return
-	}
-
 	gameState := s.GameState.Get()
-	if gameState == nil || gameState.GameOver {
+	if gameState.GameOver {
 		return
 	}
 
+	grid := s.Grid.Get()
 	collisionMap := s.CollisionMap.Get()
-	if collisionMap == nil {
-		return
-	}
 
 	gameState.SpawnTimer += float32(frame.DeltaTime)
 	if gameState.SpawnTimer < 0.1 {
