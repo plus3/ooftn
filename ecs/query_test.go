@@ -7,6 +7,7 @@ import (
 )
 
 func setupQueryTest() (*ecs.Storage, *ecs.Query[struct {
+	Id ecs.EntityId
 	*Position
 	*Velocity
 }]) {
@@ -23,6 +24,7 @@ func setupQueryTest() (*ecs.Storage, *ecs.Query[struct {
 	storage.Spawn(Position{X: 7, Y: 8})
 
 	query := ecs.NewQuery[struct {
+		Id ecs.EntityId
 		*Position
 		*Velocity
 	}](storage)
@@ -46,13 +48,13 @@ func TestQuery(t *testing.T) {
 	t.Run("multiple iterations are consistent", func(t *testing.T) {
 		_, query := setupQueryTest()
 		results1 := make(map[ecs.EntityId]bool)
-		for id := range query.Iter() {
-			results1[id] = true
+		for item := range query.Iter() {
+			results1[item.Id] = true
 		}
 
 		results2 := make(map[ecs.EntityId]bool)
-		for id := range query.Iter() {
-			results2[id] = true
+		for item := range query.Iter() {
+			results2[item.Id] = true
 		}
 
 		if len(results1) != len(results2) {
@@ -88,7 +90,7 @@ func TestQuery(t *testing.T) {
 	t.Run("iter values", func(t *testing.T) {
 		_, query := setupQueryTest()
 		count := 0
-		for item := range query.Values() {
+		for item := range query.Iter() {
 			if item.Position == nil || item.Velocity == nil {
 				t.Error("expected non-nil components")
 			}

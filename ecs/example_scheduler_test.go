@@ -28,7 +28,7 @@ type PhysicsSystem struct {
 }
 
 func (s *PhysicsSystem) Execute(frame *ecs.UpdateFrame) {
-	for entity := range s.Entities.Values() {
+	for entity := range s.Entities.Iter() {
 		entity.Transform.X += entity.Speed.DX * float32(frame.DeltaTime)
 		entity.Transform.Y += entity.Speed.DY * float32(frame.DeltaTime)
 	}
@@ -40,7 +40,7 @@ type HealingSystem struct {
 }
 
 func (s *HealingSystem) Execute(frame *ecs.UpdateFrame) {
-	for entity := range s.Entities.Values() {
+	for entity := range s.Entities.Iter() {
 		if entity.Hitpoints.Current < entity.Hitpoints.Max {
 			entity.Hitpoints.Current += int(s.RegenRate * float32(frame.DeltaTime))
 			if entity.Hitpoints.Current > entity.Hitpoints.Max {
@@ -85,7 +85,7 @@ func ExampleScheduler() {
 	}](storage)
 
 	fmt.Println("After one frame:")
-	for _, item := range view.Iter() {
+	for item := range view.Iter() {
 		fmt.Printf("Position: (%.0f, %.0f), Health: %d/%d\n",
 			item.Transform.X, item.Transform.Y,
 			item.Hitpoints.Current, item.Hitpoints.Max)

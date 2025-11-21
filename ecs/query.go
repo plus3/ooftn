@@ -31,8 +31,8 @@ func (q *Query[T]) Init(storage *Storage) {
 	q.lastArchetypeCount = -1
 }
 
-func (q *Query[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
-	return func(yield func(EntityId, T) bool) {
+func (q *Query[T]) iterArchetype(archetype *Archetype) iter.Seq[T] {
+	return func(yield func(T) bool) {
 		if len(archetype.storages) == 0 {
 			return
 		}
@@ -44,12 +44,12 @@ func (q *Query[T]) iterArchetype(archetype *Archetype) iter.Seq2[EntityId, T] {
 		resultPtr := unsafe.Pointer(&result)
 
 		for entityIndex := range firstStorage.Iter() {
-			if !q.view.populateResult(resultPtr, archetype, entityIndex, storageIndices) {
+			entityId := NewEntityId(archetype.id, uint32(entityIndex))
+			if !q.view.populateResult(resultPtr, archetype, entityIndex, storageIndices, entityId) {
 				continue
 			}
 
-			entityId := NewEntityId(archetype.id, uint32(entityIndex))
-			if !yield(entityId, result) {
+			if !yield(result) {
 				return
 			}
 		}
@@ -77,30 +77,14 @@ func (q *Query[T]) ensureArchetypeCache() {
 	}
 }
 
-// Iter returns an iterator over entity IDs and component data.
-func (q *Query[T]) Iter() iter.Seq2[EntityId, T] {
-	return func(yield func(EntityId, T) bool) {
-		q.invalidateIfNeeded()
-		q.ensureArchetypeCache()
-
-		for _, archetype := range q.cachedArchetypes {
-			for id, item := range q.iterArchetype(archetype) {
-				if !yield(id, item) {
-					return
-				}
-			}
-		}
-	}
-}
-
-// Values returns an iterator over component data only.
-func (q *Query[T]) Values() iter.Seq[T] {
+// Iter returns an iterator over component data.
+func (q *Query[T]) Iter() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		q.invalidateIfNeeded()
 		q.ensureArchetypeCache()
 
 		for _, archetype := range q.cachedArchetypes {
-			for _, item := range q.iterArchetype(archetype) {
+			for item := range q.iterArchetype(archetype) {
 				if !yield(item) {
 					return
 				}

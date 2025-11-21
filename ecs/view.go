@@ -20,6 +20,8 @@ type View[T any] struct {
 	optional    []bool
 	fieldOffset []uintptr
 
+	entityIdFieldOffset *uintptr
+
 	cachedArchetypeId   *uint32
 	cachedSortedTypes   []reflect.Type
 	cachedSortedIndices []int
@@ -46,9 +48,17 @@ func NewView[T any](storage *Storage) *View[T] {
 	fieldOffset := make([]uintptr, 0, structType.NumField())
 	typeSet := &intsets.Sparse{}
 
+	var entityIdFieldOffset *uintptr
+
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
 		fieldType := field.Type
+
+		if fieldType == reflect.TypeOf(EntityId(0)) {
+			offset := field.Offset
+			entityIdFieldOffset = &offset
+			continue
+		}
 
 		if fieldType.Kind() != reflect.Ptr {
 			panic("View struct fields must be pointer types")
@@ -110,6 +120,7 @@ func NewView[T any](storage *Storage) *View[T] {
 		typeSet:             typeSet,
 		optional:            optional,
 		fieldOffset:         fieldOffset,
+		entityIdFieldOffset: entityIdFieldOffset,
 		cachedSortedIndices: sortedIndices,
 		cachedSortedTypes:   sortedTypes,
 		cachedRequiredCount: requiredCount,
@@ -160,6 +171,11 @@ func (v *View[T]) Fill(id EntityId, ptr *T) bool {
 		}
 	}
 
+	if v.entityIdFieldOffset != nil {
+		entityIdPtr := (*EntityId)(unsafe.Pointer(uintptr(structPtr) + *v.entityIdFieldOffset))
+		*entityIdPtr = id
+	}
+
 	return true
 }
 
@@ -207,7 +223,7 @@ func (v *View[T]) buildStorageIndices(archetype *Archetype) []int {
 	return storageIndices
 }
 
-func (v *View[T]) populateResult(resultPtr unsafe.Pointer, archetype *Archetype, entityIndex int, storageIndices []int) bool {
+func (v *View[T]) populateResult(resultPtr unsafe.Pointer, archetype *Archetype, entityIndex int, storageIndices []int, entityId EntityId) bool {
 	for i, storageIdx := range storageIndices {
 		fieldPtr := unsafe.Pointer(uintptr(resultPtr) + v.fieldOffset[i])
 
@@ -231,14 +247,20 @@ func (v *View[T]) populateResult(resultPtr unsafe.Pointer, archetype *Archetype,
 		componentPtr := (*iface)(unsafe.Pointer(&component)).data
 		*(*unsafe.Pointer)(fieldPtr) = componentPtr
 	}
+
+	if v.entityIdFieldOffset != nil {
+		entityIdPtr := (*EntityId)(unsafe.Pointer(uintptr(resultPtr) + *v.entityIdFieldOffset))
+		*entityIdPtr = entityId
+	}
+
 	return true
 }
 
 // Iter returns an iterator over all entities that have all the required components for this view
-// The iterator yields (EntityId, T) pairs where T is the populated view struct
+// The iterator yields T where T is the populated view struct
 // Optional components are set to nil if not present
-func (v *View[T]) Iter() iter.Seq2[EntityId, T] {
-	return func(yield func(EntityId, T) bool) {
+func (v *View[T]) Iter() iter.Seq[T] {
+	return func(yield func(T) bool) {
 		for archetypeId, archetype := range v.storage.archetypes {
 			if !v.matchesArchetype(archetype) {
 				continue
@@ -260,26 +282,14 @@ func (v *View[T]) Iter() iter.Seq2[EntityId, T] {
 			resultPtr := unsafe.Pointer(&result)
 
 			for entityIndex := range firstStorage.Iter() {
-				if !v.populateResult(resultPtr, archetype, entityIndex, storageIndices) {
+				entityId := NewEntityId(archetypeId, uint32(entityIndex))
+				if !v.populateResult(resultPtr, archetype, entityIndex, storageIndices, entityId) {
 					continue
 				}
 
-				entityId := NewEntityId(archetypeId, uint32(entityIndex))
-				if !yield(entityId, result) {
+				if !yield(result) {
 					return
 				}
-			}
-		}
-	}
-}
-
-// Values returns an iterator over just the view structs (without entity IDs)
-// This is useful when you only care about the component data, not which entity it belongs to
-func (v *View[T]) Values() iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for _, value := range v.Iter() {
-			if !yield(value) {
-				return
 			}
 		}
 	}

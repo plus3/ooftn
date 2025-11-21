@@ -18,7 +18,7 @@ type MovementSystem struct {
 
 func (s *MovementSystem) Execute(frame *ecs.UpdateFrame) {
 	s.ExecuteCount++
-	for item := range s.Entities.Values() {
+	for item := range s.Entities.Iter() {
 		item.Position.X += item.Velocity.DX * float32(frame.DeltaTime)
 		item.Position.Y += item.Velocity.DY * float32(frame.DeltaTime)
 	}
@@ -35,7 +35,7 @@ type HealthSystem struct {
 func (s *HealthSystem) Execute(frame *ecs.UpdateFrame) {
 	s.ExecuteCount++
 	s.TotalHealth = 0
-	for item := range s.Entities.Values() {
+	for item := range s.Entities.Iter() {
 		s.TotalHealth += float64(item.Health.Current)
 	}
 }
@@ -146,7 +146,7 @@ func TestScheduler(t *testing.T) {
 		scheduler.Once(0.5)
 
 		found := false
-		for item := range movement.Entities.Values() {
+		for item := range movement.Entities.Iter() {
 			if item.Position.X == 5.0 && item.Position.Y == 10.0 {
 				found = true
 			}
@@ -175,7 +175,7 @@ func TestScheduler(t *testing.T) {
 		scheduler.Once(1.0)
 
 		count := 0
-		for range movement.Entities.Values() {
+		for range movement.Entities.Iter() {
 			count++
 		}
 

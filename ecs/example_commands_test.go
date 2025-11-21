@@ -8,6 +8,7 @@ import (
 
 type CleanupSystem struct {
 	Entities ecs.Query[struct {
+		Id ecs.EntityId
 		*Position
 		*Health
 	}]
@@ -15,9 +16,9 @@ type CleanupSystem struct {
 
 func (s *CleanupSystem) Execute(frame *ecs.UpdateFrame) {
 	deadCount := 0
-	for id, item := range s.Entities.Iter() {
+	for item := range s.Entities.Iter() {
 		if item.Health.Current <= 0 {
-			frame.Commands.Delete(id)
+			frame.Commands.Delete(item.Id)
 			deadCount++
 		}
 	}
@@ -72,7 +73,7 @@ type ShootingSystem struct {
 }
 
 func (s *ShootingSystem) Execute(frame *ecs.UpdateFrame) {
-	for _, item := range s.Entities.Iter() {
+	for item := range s.Entities.Iter() {
 		if item.ShootTimer.TimeUntilShot <= 0 {
 			frame.Commands.Spawn(
 				Position{X: item.Position.X, Y: item.Position.Y},

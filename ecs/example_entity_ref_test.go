@@ -72,7 +72,7 @@ func ExampleEntityRef_relationshipComponent() {
 		*FollowerAI
 	}](storage)
 
-	for _, item := range view.Iter() {
+	for item := range view.Iter() {
 		if targetId, ok := storage.ResolveEntityRef(item.FollowerAI.Target); ok {
 			targetPos := ecs.ReadComponent[Position](storage, targetId)
 			fmt.Printf("Follower at (%.0f, %.0f) following target at (%.0f, %.0f)\n",
@@ -83,7 +83,7 @@ func ExampleEntityRef_relationshipComponent() {
 	storage.Delete(leader)
 
 	fmt.Println("\nAfter leader deleted:")
-	for _, item := range view.Iter() {
+	for item := range view.Iter() {
 		if _, ok := storage.ResolveEntityRef(item.FollowerAI.Target); !ok {
 			fmt.Printf("Follower at (%.0f, %.0f) lost its target\n",
 				item.Position.X, item.Position.Y)

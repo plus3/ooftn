@@ -42,6 +42,10 @@ func ExampleView() {
 // Views automatically match entities across all archetypes that contain
 // the required components, making it easy to process entities without
 // worrying about their specific archetype layout.
+//
+// By including an EntityId field in the view struct, you can access each
+// entity's ID during iteration. This is useful for storing references,
+// deleting entities, or performing operations that require the entity ID.
 func ExampleView_Iter() {
 	registry := ecs.NewComponentRegistry()
 	ecs.RegisterComponent[Position](registry)
@@ -55,6 +59,7 @@ func ExampleView_Iter() {
 	storage.Spawn(Position{X: 100, Y: 100})
 
 	view := ecs.NewView[struct {
+		Id ecs.EntityId
 		*Position
 		*Velocity
 	}](storage)
@@ -63,10 +68,12 @@ func ExampleView_Iter() {
 		x, y float32
 	}
 	results := make([]result, 0)
-	for _, item := range view.Iter() {
+	entityIds := make([]ecs.EntityId, 0)
+	for item := range view.Iter() {
 		item.Position.X += item.Velocity.DX
 		item.Position.Y += item.Velocity.DY
 		results = append(results, result{item.Position.X, item.Position.Y})
+		entityIds = append(entityIds, item.Id)
 	}
 
 	for i := 0; i < len(results); i++ {
@@ -81,12 +88,14 @@ func ExampleView_Iter() {
 	for _, r := range results {
 		fmt.Printf("New position: (%.0f, %.0f)\n", r.x, r.y)
 	}
+	fmt.Printf("Total entities with IDs: %d\n", len(entityIds))
 
 	// Output:
 	// Entities with position and velocity:
 	// New position: (1, 0)
 	// New position: (10, 11)
 	// New position: (19, 19)
+	// Total entities with IDs: 3
 }
 
 // ExampleView_optional demonstrates using optional components in views.
@@ -112,7 +121,7 @@ func ExampleView_optional() {
 	}](storage)
 
 	fmt.Println("All moving entities:")
-	for item := range view.Values() {
+	for item := range view.Iter() {
 		if item.Health != nil {
 			fmt.Printf("Entity at (%.0f, %.0f) with health %d/%d\n",
 				item.Position.X, item.Position.Y, item.Health.Current, item.Health.Max)
