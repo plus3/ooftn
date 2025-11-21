@@ -2,3 +2,4 @@
 cmd/ecs-stress/generated_*.go
 /*.pdf
 examples/tetris/tetris
+examples/world-sim/world-sim

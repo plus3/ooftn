@@ -7,6 +7,25 @@ import (
 	"weak"
 )
 
+// StorageStats provides statistics about ECS storage state.
+type StorageStats struct {
+	ArchetypeCount     int
+	TotalEntityCount   int
+	ArchetypeBreakdown []ArchetypeStats
+	SingletonCount     int
+	SingletonTypes     []string
+	TotalStorageSlots  int
+	EmptyStorageSlots  int
+	StorageUtilization float32
+}
+
+// ArchetypeStats provides statistics for a single archetype.
+type ArchetypeStats struct {
+	ID             uint32
+	ComponentTypes []string
+	EntityCount    int
+}
+
 // singletonEntry holds data for a singleton component
 type singletonEntry struct {
 	componentType reflect.Type
@@ -89,6 +108,16 @@ func (s *Storage) GetArchetype(components ...any) *Archetype {
 	types := extractComponentTypes(components)
 	archetypeId := hashTypesToUint32(types)
 	return s.archetypes[archetypeId]
+}
+
+// GetArchetypes returns all archetypes in storage
+func (s *Storage) GetArchetypes() map[uint32]*Archetype {
+	return s.archetypes
+}
+
+// GetArchetypeById returns an archetype by its ID
+func (s *Storage) GetArchetypeById(id uint32) *Archetype {
+	return s.archetypes[id]
 }
 
 // GetArchetypeByTypes returns an archetype storage (if one exists) based on reflect.Type
@@ -388,4 +417,55 @@ func (s *Storage) ReadSingleton(ptr any) bool {
 // getSingletonEntry returns the singleton entry for internal use
 func (s *Storage) getSingletonEntry(componentType reflect.Type) *singletonEntry {
 	return s.singletons[componentType]
+}
+
+// CollectStats gathers statistics about the current storage state.
+func (s *Storage) CollectStats() *StorageStats {
+	stats := &StorageStats{
+		ArchetypeCount:     len(s.archetypes),
+		ArchetypeBreakdown: make([]ArchetypeStats, 0, len(s.archetypes)),
+		SingletonTypes:     make([]string, 0, len(s.singletons)),
+	}
+
+	totalEntities := 0
+	totalSlots := 0
+	emptySlots := 0
+
+	for _, archetype := range s.archetypes {
+		entityCount := 0
+		if len(archetype.storages) > 0 {
+			for idx := range archetype.storages[0].Iter() {
+				entityCount++
+				_ = idx
+			}
+		}
+
+		componentTypes := make([]string, len(archetype.types))
+		for i, t := range archetype.types {
+			componentTypes[i] = t.String()
+		}
+
+		stats.ArchetypeBreakdown = append(stats.ArchetypeBreakdown, ArchetypeStats{
+			ID:             archetype.id,
+			ComponentTypes: componentTypes,
+			EntityCount:    entityCount,
+		})
+
+		totalEntities += entityCount
+	}
+
+	stats.TotalEntityCount = totalEntities
+	stats.SingletonCount = len(s.singletons)
+
+	for t := range s.singletons {
+		stats.SingletonTypes = append(stats.SingletonTypes, t.String())
+	}
+
+	stats.TotalStorageSlots = totalSlots
+	stats.EmptyStorageSlots = emptySlots
+	if totalSlots > 0 {
+		stats.StorageUtilization = float32(totalSlots-emptySlots) / float32(totalSlots)
+	}
+
+	return stats
 }
