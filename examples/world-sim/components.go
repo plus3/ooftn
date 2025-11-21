@@ -163,6 +163,10 @@ type Fertile struct {
 
 type Dead struct{}
 
+type PendingDeaths struct {
+	pending map[ecs.EntityId]bool
+}
+
 type Combat struct {
 	AttackPower int
 	AttackSpeed float32

@@ -5,6 +5,7 @@ import (
 
 	ebitenbackend "github.com/AllenDang/cimgui-go/backend/ebiten-backend"
 	"github.com/AllenDang/cimgui-go/imgui"
+	"github.com/AllenDang/cimgui-go/implot"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/plus3/ooftn/ecs"
 	"github.com/plus3/ooftn/ecs/debugui"
@@ -38,6 +39,8 @@ func main() {
 	imguiBackend := ebitenbackend.NewEbitenBackend()
 	imguiBackend.CreateWindow("backseas", ScreenWidth, ScreenHeight)
 	imgui.CurrentIO().SetIniFilename("")
+	implot.CreateContext()
+	defer implot.DestroyContext()
 
 	registry := ecs.NewComponentRegistry()
 	ecs.RegisterComponent[Position](registry)
@@ -60,6 +63,7 @@ func main() {
 	ecs.RegisterComponent[Lifespan](registry)
 	ecs.RegisterComponent[Fertile](registry)
 	ecs.RegisterComponent[Dead](registry)
+	ecs.RegisterComponent[PendingDeaths](registry)
 	ecs.RegisterComponent[Combat](registry)
 
 	ecs.RegisterComponent[debugui_ebiten.ImguiBackend](registry)
@@ -67,6 +71,7 @@ func main() {
 	ecs.RegisterComponent[debugui.ImguiInputState](registry)
 	ecs.RegisterComponent[PerformanceMetrics](registry)
 	ecs.RegisterComponent[SimulationMetrics](registry)
+	ecs.RegisterComponent[PerformanceChart](registry)
 
 	storage := ecs.NewStorage(registry)
 
@@ -101,6 +106,10 @@ func main() {
 		Cells:    make(map[[2]int][]ecs.EntityId),
 	})
 
+	ecs.NewSingleton[PendingDeaths](storage, PendingDeaths{
+		pending: make(map[ecs.EntityId]bool),
+	})
+
 	ecs.NewSingleton[PerformanceMetrics](storage, PerformanceMetrics{
 		LastFrameSamples: make([]float32, 0, 60),
 	})
@@ -109,12 +118,14 @@ func main() {
 	initWorld(storage)
 
 	scheduler := ecs.NewScheduler(storage)
+	scheduler.Register(&ClearPendingDeathsSystem{})
 	scheduler.Register(&MetricsSystem{})
 	scheduler.Register(&debugui.ImguiSystem{})
 	scheduler.Register(&TimeSystem{})
 	scheduler.Register(&ColonyManagementSystem{})
-	scheduler.Register(&TaskAssignmentSystem{})
 	scheduler.Register(&MovementSystem{})
+	scheduler.Register(&SpatialGridSystem{})
+	scheduler.Register(&TaskAssignmentSystem{})
 	scheduler.Register(&WorkSystem{})
 	scheduler.Register(&HungerSystem{})
 	scheduler.Register(&ReproductionSystem{})

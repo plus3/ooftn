@@ -4,12 +4,21 @@ import (
 	"image/color"
 	"math"
 	"math/rand/v2"
+	"reflect"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/plus3/ooftn/ecs"
 	"github.com/plus3/ooftn/ecs/debugui"
 )
+
+type ClearPendingDeathsSystem struct {
+	PendingDeaths ecs.Singleton[PendingDeaths]
+}
+
+func (s *ClearPendingDeathsSystem) Execute(frame *ecs.UpdateFrame) {
+	clear(s.PendingDeaths.Get().pending)
+}
 
 type TimeSystem struct {
 	GameTime ecs.Singleton[GameTime]
@@ -22,6 +31,27 @@ func (s *TimeSystem) Execute(frame *ecs.UpdateFrame) {
 	newDay := int(time.Elapsed / time.DayLength)
 	if newDay > time.CurrentDay {
 		time.CurrentDay = newDay
+	}
+}
+
+type SpatialGridSystem struct {
+	Grid     ecs.Singleton[SpatialGrid]
+	Entities ecs.Query[struct {
+		ecs.EntityId
+		*GridPosition
+	}]
+}
+
+func (s *SpatialGridSystem) Execute(frame *ecs.UpdateFrame) {
+	grid := s.Grid.Get()
+	clear(grid.Cells)
+
+	// Populate the grid
+	for entity := range s.Entities.Iter() {
+		cellX := entity.GridPosition.X / grid.CellSize
+		cellY := entity.GridPosition.Y / grid.CellSize
+		cellKey := [2]int{cellX, cellY}
+		grid.Cells[cellKey] = append(grid.Cells[cellKey], entity.EntityId)
 	}
 }
 
@@ -429,9 +459,11 @@ type HungerSystem struct {
 		ecs.EntityId
 		*ColonyResources
 	}]
+	PendingDeaths ecs.Singleton[PendingDeaths]
 }
 
 func (s *HungerSystem) Execute(frame *ecs.UpdateFrame) {
+	pending := s.PendingDeaths.Get().pending
 	for entity := range s.Living.Iter() {
 		entity.Stats.Hunger += int(float32(frame.DeltaTime) * 2)
 
@@ -452,7 +484,10 @@ func (s *HungerSystem) Execute(frame *ecs.UpdateFrame) {
 			if entity.Stats.Hunger >= entity.Stats.MaxHunger {
 				entity.Stats.Health -= 1
 				if entity.Stats.Health <= 0 {
-					frame.Commands.AddComponent(entity.EntityId, Dead{})
+					if !pending[entity.EntityId] {
+						frame.Commands.AddComponent(entity.EntityId, Dead{})
+						pending[entity.EntityId] = true
+					}
 				}
 			}
 		}
@@ -516,54 +551,87 @@ type CombatSystem struct {
 		*Stats
 		*ColonyMember
 	}]
+	Grid          ecs.Singleton[SpatialGrid]
+	PendingDeaths ecs.Singleton[PendingDeaths]
 }
 
 func (s *CombatSystem) Execute(frame *ecs.UpdateFrame) {
-	fighters := make([]struct {
-		ecs.EntityId
-		*Combat
-		*GridPosition
-		*Stats
-		*ColonyMember
-	}, 0)
+	grid := s.Grid.Get()
+	pending := s.PendingDeaths.Get().pending
 
-	for fighter := range s.Fighters.Iter() {
-		fighters = append(fighters, fighter)
-	}
+	for f1 := range s.Fighters.Iter() {
+		if pending[f1.EntityId] {
+			continue
+		}
+		cellX := f1.GridPosition.X / grid.CellSize
+		cellY := f1.GridPosition.Y / grid.CellSize
 
-	for i := range fighters {
-		for j := i + 1; j < len(fighters); j++ {
-			f1 := fighters[i]
-			f2 := fighters[j]
+		for dx := -1; dx <= 1; dx++ {
+			for dy := -1; dy <= 1; dy++ {
+				cellKey := [2]int{cellX + dx, cellY + dy}
+				if entitiesInCell, ok := grid.Cells[cellKey]; ok {
+					for _, entityId := range entitiesInCell {
+						if f1.EntityId >= entityId || pending[entityId] {
+							continue
+						}
 
-			col1, valid1 := frame.Storage.ResolveEntityRef(f1.ColonyMember.ColonyRef)
-			col2, valid2 := frame.Storage.ResolveEntityRef(f2.ColonyMember.ColonyRef)
+						comp := frame.Storage.GetComponent(entityId, reflect.TypeOf(Combat{}))
+						if comp == nil {
+							continue
+						}
+						f2Combat := comp.(*Combat)
 
-			if !valid1 || !valid2 || col1 == col2 {
-				continue
-			}
+						f2GridPosComp := frame.Storage.GetComponent(entityId, reflect.TypeOf(GridPosition{}))
+						if f2GridPosComp == nil {
+							continue
+						}
+						f2GridPos := f2GridPosComp.(*GridPosition)
 
-			dx := f1.GridPosition.X - f2.GridPosition.X
-			dy := f1.GridPosition.Y - f2.GridPosition.Y
-			distSq := dx*dx + dy*dy
+						f2StatsComp := frame.Storage.GetComponent(entityId, reflect.TypeOf(Stats{}))
+						if f2StatsComp == nil {
+							continue
+						}
+						f2Stats := f2StatsComp.(*Stats)
 
-			if distSq <= 4 {
-				f1.Combat.AttackTimer += float32(frame.DeltaTime)
-				f2.Combat.AttackTimer += float32(frame.DeltaTime)
+						f2ColonyMemberComp := frame.Storage.GetComponent(entityId, reflect.TypeOf(ColonyMember{}))
+						if f2ColonyMemberComp == nil {
+							continue
+						}
+						f2ColonyMember := f2ColonyMemberComp.(*ColonyMember)
 
-				if f1.Combat.AttackTimer >= 1.0/f1.Combat.AttackSpeed {
-					f2.Stats.Health -= f1.Combat.AttackPower
-					f1.Combat.AttackTimer = 0
-					if f2.Stats.Health <= 0 {
-						frame.Commands.AddComponent(f2.EntityId, Dead{})
-					}
-				}
+						col1, valid1 := frame.Storage.ResolveEntityRef(f1.ColonyMember.ColonyRef)
+						col2, valid2 := frame.Storage.ResolveEntityRef(f2ColonyMember.ColonyRef)
 
-				if f2.Combat.AttackTimer >= 1.0/f2.Combat.AttackSpeed {
-					f1.Stats.Health -= f2.Combat.AttackPower
-					f2.Combat.AttackTimer = 0
-					if f1.Stats.Health <= 0 {
-						frame.Commands.AddComponent(f1.EntityId, Dead{})
+						if !valid1 || !valid2 || col1 == col2 {
+							continue
+						}
+
+						dx := f1.GridPosition.X - f2GridPos.X
+						dy := f1.GridPosition.Y - f2GridPos.Y
+						distSq := dx*dx + dy*dy
+
+						if distSq <= 4 {
+							f1.Combat.AttackTimer += float32(frame.DeltaTime)
+							f2Combat.AttackTimer += float32(frame.DeltaTime)
+
+							if f1.Combat.AttackTimer >= 1.0/f1.Combat.AttackSpeed {
+								f2Stats.Health -= f1.Combat.AttackPower
+								f1.Combat.AttackTimer = 0
+								if f2Stats.Health <= 0 && !pending[entityId] {
+									frame.Commands.AddComponent(entityId, Dead{})
+									pending[entityId] = true
+								}
+							}
+
+							if f2Combat.AttackTimer >= 1.0/f2Combat.AttackSpeed {
+								f1.Stats.Health -= f2Combat.AttackPower
+								f2Combat.AttackTimer = 0
+								if f1.Stats.Health <= 0 && !pending[f1.EntityId] {
+									frame.Commands.AddComponent(f1.EntityId, Dead{})
+									pending[f1.EntityId] = true
+								}
+							}
+						}
 					}
 				}
 			}
@@ -577,16 +645,21 @@ type LifespanSystem struct {
 		*Lifespan
 		*Stats
 	}]
-	GameTime ecs.Singleton[GameTime]
+	GameTime      ecs.Singleton[GameTime]
+	PendingDeaths ecs.Singleton[PendingDeaths]
 }
 
 func (s *LifespanSystem) Execute(frame *ecs.UpdateFrame) {
 	time := s.GameTime.Get()
+	pending := s.PendingDeaths.Get().pending
 
 	for entity := range s.Aging.Iter() {
 		age := time.Elapsed - entity.Lifespan.BirthTime
 		if age >= entity.Lifespan.MaxAge {
-			frame.Commands.AddComponent(entity.EntityId, Dead{})
+			if !pending[entity.EntityId] {
+				frame.Commands.AddComponent(entity.EntityId, Dead{})
+				pending[entity.EntityId] = true
+			}
 		}
 	}
 }
