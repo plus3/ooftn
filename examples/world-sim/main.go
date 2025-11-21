@@ -91,6 +91,9 @@ func main() {
 
 	storage := ecs.NewStorage(registry)
 
+	debugui.RegisterDebugUIComponents(registry)
+	debugui.SpawnDebugUI(storage)
+
 	ecs.NewSingleton[debugui_ebiten.ImguiBackend](storage, debugui_ebiten.ImguiBackend{
 		EbitenBackend: imguiBackend,
 	})

@@ -110,6 +110,16 @@ func (s *Storage) GetArchetype(components ...any) *Archetype {
 	return s.archetypes[archetypeId]
 }
 
+// GetArchetypes returns all archetypes in storage
+func (s *Storage) GetArchetypes() map[uint32]*Archetype {
+	return s.archetypes
+}
+
+// GetArchetypeById returns an archetype by its ID
+func (s *Storage) GetArchetypeById(id uint32) *Archetype {
+	return s.archetypes[id]
+}
+
 // GetArchetypeByTypes returns an archetype storage (if one exists) based on reflect.Type
 func (s *Storage) GetArchetypeByTypes(types []reflect.Type) *Archetype {
 	sort.Sort(byTypeName(types))
