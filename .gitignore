@@ -1,3 +1,4 @@
 /scratch.txt
 cmd/ecs-stress/generated_*.go
 /*.pdf
+examples/tetris/tetris

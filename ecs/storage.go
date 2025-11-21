@@ -7,10 +7,17 @@ import (
 	"weak"
 )
 
+// singletonEntry holds data for a singleton component
+type singletonEntry struct {
+	componentType reflect.Type
+	dataPtr       unsafe.Pointer
+}
+
 // Storage is the main ECS storage interface
 type Storage struct {
 	archetypes map[uint32]*Archetype
 	registry   *ComponentRegistry
+	singletons map[reflect.Type]*singletonEntry
 }
 
 // NewStorage creates a new ECS storage system with the given component registry
@@ -18,6 +25,7 @@ func NewStorage(registry *ComponentRegistry) *Storage {
 	return &Storage{
 		archetypes: make(map[uint32]*Archetype),
 		registry:   registry,
+		singletons: make(map[reflect.Type]*singletonEntry),
 	}
 }
 
@@ -307,4 +315,77 @@ type ComponentReader interface {
 
 func ReadComponent[T any](reader ComponentReader, entityId EntityId) *T {
 	return reader.GetComponent(entityId, reflect.TypeFor[T]()).(*T)
+}
+
+// AddSingleton adds or updates a singleton component in storage.
+// Singleton components are not associated with any entity and provide
+// efficient global state access. Returns a pointer to the stored component.
+func (s *Storage) AddSingleton(component any) unsafe.Pointer {
+	// Get the actual value if component is a pointer
+	val := reflect.ValueOf(component)
+	componentType := val.Type()
+	if val.Kind() == reflect.Ptr {
+		componentType = componentType.Elem()
+		val = val.Elem()
+	}
+
+	// Allocate memory for the component and copy the data
+	dataPtr := unsafe.Pointer(reflect.New(componentType).Pointer())
+	reflect.NewAt(componentType, dataPtr).Elem().Set(val)
+
+	// Store or update the singleton entry
+	s.singletons[componentType] = &singletonEntry{
+		componentType: componentType,
+		dataPtr:       dataPtr,
+	}
+
+	return dataPtr
+}
+
+// GetSingleton returns a pointer to a singleton component, or nil if it doesn't exist.
+func (s *Storage) GetSingleton(componentType reflect.Type) any {
+	entry := s.singletons[componentType]
+	if entry == nil {
+		return nil
+	}
+	return reflect.NewAt(componentType, entry.dataPtr).Interface()
+}
+
+// ReadSingleton reads a singleton component into the provided pointer.
+// The ptr parameter must be a pointer to a pointer (e.g., &gameState where gameState is *GameState).
+// Returns true if the singleton exists and was successfully read, false otherwise.
+//
+// Example usage:
+//
+//	var gameState *GameState
+//	if storage.ReadSingleton(&gameState) {
+//	    // use gameState here
+//	}
+func (s *Storage) ReadSingleton(ptr any) bool {
+	ptrVal := reflect.ValueOf(ptr)
+	if ptrVal.Kind() != reflect.Ptr {
+		panic("ReadSingleton: argument must be a pointer to a pointer")
+	}
+
+	targetVal := ptrVal.Elem()
+	if targetVal.Kind() != reflect.Ptr {
+		panic("ReadSingleton: argument must be a pointer to a pointer")
+	}
+
+	// Get the component type (not the pointer type)
+	componentType := targetVal.Type().Elem()
+
+	entry := s.singletons[componentType]
+	if entry == nil {
+		return false
+	}
+
+	// Set the pointer to point to the singleton data
+	targetVal.Set(reflect.NewAt(componentType, entry.dataPtr))
+	return true
+}
+
+// getSingletonEntry returns the singleton entry for internal use
+func (s *Storage) getSingletonEntry(componentType reflect.Type) *singletonEntry {
+	return s.singletons[componentType]
 }

@@ -117,18 +117,11 @@ type CollisionSystem struct {
 		*Position
 		*LockedPiece
 	}]
-	CollisionMapQuery ecs.Query[struct {
-		*CollisionMap
-	}]
+	CollisionMap ecs.Singleton[CollisionMap]
 }
 
 func (s *CollisionSystem) Execute(frame *ecs.UpdateFrame) {
-	var collisionMap *CollisionMap
-	for cm := range s.CollisionMapQuery.Iter() {
-		collisionMap = cm.CollisionMap
-		break
-	}
-
+	collisionMap := s.CollisionMap.Get()
 	if collisionMap == nil {
 		return
 	}
@@ -145,31 +138,17 @@ type InputSystem struct {
 		*Tetromino
 		*InputState
 	}]
-	GridQuery ecs.Query[struct {
-		*Grid
-	}]
-	CollisionMapQuery ecs.Query[struct {
-		*CollisionMap
-	}]
+	Grid         ecs.Singleton[Grid]
+	CollisionMap ecs.Singleton[CollisionMap]
 }
 
 func (s *InputSystem) Execute(frame *ecs.UpdateFrame) {
-	var grid *Grid
-	for g := range s.GridQuery.Iter() {
-		grid = g.Grid
-		break
-	}
-
+	grid := s.Grid.Get()
 	if grid == nil {
 		return
 	}
 
-	var collisionMap *CollisionMap
-	for cm := range s.CollisionMapQuery.Iter() {
-		collisionMap = cm.CollisionMap
-		break
-	}
-
+	collisionMap := s.CollisionMap.Get()
 	if collisionMap == nil {
 		return
 	}
@@ -262,44 +241,23 @@ type GravitySystem struct {
 		*Velocity
 		*Tetromino
 	}]
-	GridQuery ecs.Query[struct {
-		*Grid
-	}]
-	GameStateQuery ecs.Query[struct {
-		*GameState
-	}]
-	CollisionMapQuery ecs.Query[struct {
-		*CollisionMap
-	}]
+	Grid         ecs.Singleton[Grid]
+	GameState    ecs.Singleton[GameState]
+	CollisionMap ecs.Singleton[CollisionMap]
 }
 
 func (s *GravitySystem) Execute(frame *ecs.UpdateFrame) {
-	var grid *Grid
-	for g := range s.GridQuery.Iter() {
-		grid = g.Grid
-		break
-	}
-
+	grid := s.Grid.Get()
 	if grid == nil {
 		return
 	}
 
-	var gameState *GameState
-	for gs := range s.GameStateQuery.Iter() {
-		gameState = gs.GameState
-		break
-	}
-
+	gameState := s.GameState.Get()
 	if gameState == nil || gameState.GameOver {
 		return
 	}
 
-	var collisionMap *CollisionMap
-	for cm := range s.CollisionMapQuery.Iter() {
-		collisionMap = cm.CollisionMap
-		break
-	}
-
+	collisionMap := s.CollisionMap.Get()
 	if collisionMap == nil {
 		return
 	}
@@ -332,31 +290,17 @@ type LockSystem struct {
 		*Position
 		*Tetromino
 	}]
-	GridQuery ecs.Query[struct {
-		*Grid
-	}]
-	GameStateQuery ecs.Query[struct {
-		*GameState
-	}]
+	Grid      ecs.Singleton[Grid]
+	GameState ecs.Singleton[GameState]
 }
 
 func (s *LockSystem) Execute(frame *ecs.UpdateFrame) {
-	var grid *Grid
-	for g := range s.GridQuery.Iter() {
-		grid = g.Grid
-		break
-	}
-
+	grid := s.Grid.Get()
 	if grid == nil {
 		return
 	}
 
-	var gameState *GameState
-	for gs := range s.GameStateQuery.Iter() {
-		gameState = gs.GameState
-		break
-	}
-
+	gameState := s.GameState.Get()
 	if gameState == nil || gameState.GameOver {
 		return
 	}
@@ -387,12 +331,8 @@ func (s *LockSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type LineClearSystem struct {
-	GridQuery ecs.Query[struct {
-		*Grid
-	}]
-	GameStateQuery ecs.Query[struct {
-		*GameState
-	}]
+	Grid         ecs.Singleton[Grid]
+	GameState    ecs.Singleton[GameState]
 	LockedPieces ecs.Query[struct {
 		ecs.EntityId
 		*Position
@@ -401,22 +341,12 @@ type LineClearSystem struct {
 }
 
 func (s *LineClearSystem) Execute(frame *ecs.UpdateFrame) {
-	var grid *Grid
-	for g := range s.GridQuery.Iter() {
-		grid = g.Grid
-		break
-	}
-
+	grid := s.Grid.Get()
 	if grid == nil {
 		return
 	}
 
-	var gameState *GameState
-	for gs := range s.GameStateQuery.Iter() {
-		gameState = gs.GameState
-		break
-	}
-
+	gameState := s.GameState.Get()
 	if gameState == nil {
 		return
 	}
@@ -473,15 +403,9 @@ type SpawnSystem struct {
 	ActivePiece ecs.Query[struct {
 		*Tetromino
 	}]
-	GridQuery ecs.Query[struct {
-		*Grid
-	}]
-	GameStateQuery ecs.Query[struct {
-		*GameState
-	}]
-	CollisionMapQuery ecs.Query[struct {
-		*CollisionMap
-	}]
+	Grid         ecs.Singleton[Grid]
+	GameState    ecs.Singleton[GameState]
+	CollisionMap ecs.Singleton[CollisionMap]
 }
 
 func (s *SpawnSystem) Execute(frame *ecs.UpdateFrame) {
@@ -495,32 +419,17 @@ func (s *SpawnSystem) Execute(frame *ecs.UpdateFrame) {
 		return
 	}
 
-	var grid *Grid
-	for g := range s.GridQuery.Iter() {
-		grid = g.Grid
-		break
-	}
-
+	grid := s.Grid.Get()
 	if grid == nil {
 		return
 	}
 
-	var gameState *GameState
-	for gs := range s.GameStateQuery.Iter() {
-		gameState = gs.GameState
-		break
-	}
-
+	gameState := s.GameState.Get()
 	if gameState == nil || gameState.GameOver {
 		return
 	}
 
-	var collisionMap *CollisionMap
-	for cm := range s.CollisionMapQuery.Iter() {
-		collisionMap = cm.CollisionMap
-		break
-	}
-
+	collisionMap := s.CollisionMap.Get()
 	if collisionMap == nil {
 		return
 	}
@@ -571,22 +480,16 @@ func (s *SpawnSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type RenderSystem struct {
-	GridQuery ecs.Query[struct {
-		*Grid
-	}]
-	ActivePiece ecs.Query[struct {
+	Grid         ecs.Singleton[Grid]
+	GameState    ecs.Singleton[GameState]
+	CollisionMap ecs.Singleton[CollisionMap]
+	ActivePiece  ecs.Query[struct {
 		*Position
 		*Tetromino
 	}]
 	LockedPieces ecs.Query[struct {
 		*Position
 		*LockedPiece
-	}]
-	GameStateQuery ecs.Query[struct {
-		*GameState
-	}]
-	CollisionMapQuery ecs.Query[struct {
-		*CollisionMap
 	}]
 }
 
@@ -599,11 +502,7 @@ func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 
 	rl.DrawRectangleLines(offsetX-2, offsetY-2, GridWidth*CellSize+4, GridHeight*CellSize+4, rl.Gray)
 
-	var grid *Grid
-	for g := range s.GridQuery.Iter() {
-		grid = g.Grid
-		break
-	}
+	grid := s.Grid.Get()
 
 	for entity := range s.LockedPieces.Iter() {
 		x := offsetX + int32(entity.Position.X*CellSize)
@@ -612,11 +511,7 @@ func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 		rl.DrawRectangleLines(x, y, CellSize, CellSize, rl.Black)
 	}
 
-	var collisionMap *CollisionMap
-	for cm := range s.CollisionMapQuery.Iter() {
-		collisionMap = cm.CollisionMap
-		break
-	}
+	collisionMap := s.CollisionMap.Get()
 
 	for entity := range s.ActivePiece.Iter() {
 		if grid != nil && collisionMap != nil {
@@ -653,12 +548,7 @@ func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 		}
 	}
 
-	var gameState *GameState
-	for gs := range s.GameStateQuery.Iter() {
-		gameState = gs.GameState
-		break
-	}
-
+	gameState := s.GameState.Get()
 	if gameState != nil {
 		textX := offsetX + GridWidth*CellSize + 20
 		rl.DrawText("SCORE", textX, offsetY, 20, rl.White)

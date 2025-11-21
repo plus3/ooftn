@@ -49,12 +49,12 @@ func main() {
 }
 
 func initGame(storage *ecs.Storage) {
-	storage.Spawn(Grid{
+	ecs.NewSingleton[Grid](storage, Grid{
 		Width:  GridWidth,
 		Height: GridHeight,
 	})
 
-	storage.Spawn(GameState{
+	ecs.NewSingleton[GameState](storage, GameState{
 		Score:        0,
 		Level:        1,
 		LinesCleared: 0,
@@ -64,27 +64,31 @@ func initGame(storage *ecs.Storage) {
 		NextPieces:   []int{},
 	})
 
-	storage.Spawn(CollisionMap{
+	ecs.NewSingleton[CollisionMap](storage, CollisionMap{
 		OccupiedCells: make(map[[2]int]bool),
 	})
 }
 
 func resetGame(storage *ecs.Storage) {
-	view := ecs.NewView[struct {
-		ecs.EntityId
-		*GameState
-	}](storage)
-
-	for entity := range view.Iter() {
-		entity.GameState.Score = 0
-		entity.GameState.Level = 1
-		entity.GameState.LinesCleared = 0
-		entity.GameState.GameOver = false
-		entity.GameState.SpawnTimer = 0
-		entity.GameState.LockDelay = 0
-		entity.GameState.NextPieces = []int{}
+	// Reset singleton game state
+	var gameState *GameState
+	if storage.ReadSingleton(&gameState) {
+		gameState.Score = 0
+		gameState.Level = 1
+		gameState.LinesCleared = 0
+		gameState.GameOver = false
+		gameState.SpawnTimer = 0
+		gameState.LockDelay = 0
+		gameState.NextPieces = []int{}
 	}
 
+	// Reset collision map
+	var collisionMap *CollisionMap
+	if storage.ReadSingleton(&collisionMap) {
+		collisionMap.OccupiedCells = make(map[[2]int]bool)
+	}
+
+	// Delete all active pieces
 	activePieceView := ecs.NewView[struct {
 		ecs.EntityId
 		*Position
@@ -95,6 +99,7 @@ func resetGame(storage *ecs.Storage) {
 		storage.Delete(entity.EntityId)
 	}
 
+	// Delete all locked pieces
 	lockedView := ecs.NewView[struct {
 		ecs.EntityId
 		*LockedPiece
