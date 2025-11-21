@@ -43,42 +43,25 @@ func NewSingleton[T any](storage *Storage, initializer ...T) *Singleton[T] {
 
 // Init initializes the Singleton with a storage reference.
 // This is called automatically by the Scheduler during system registration.
+// It ensures the singleton exists in storage, creating it with a zero value if needed.
 func (s *Singleton[T]) Init(storage *Storage) {
 	var zero T
 	s.storage = storage
 	s.componentType = reflect.TypeOf(zero)
-	s.updateCache()
+
+	// Ensure singleton exists in storage
+	entry := storage.getSingletonEntry(s.componentType)
+	if entry == nil {
+		// Create singleton with zero value
+		storage.AddSingleton(zero)
+		entry = storage.getSingletonEntry(s.componentType)
+	}
+
+	s.componentPtr = entry.dataPtr
 }
 
 // Get returns a pointer to the singleton component.
-// Returns nil if the singleton has not been added to storage.
+// The singleton is guaranteed to exist (it's created automatically if needed).
 func (s *Singleton[T]) Get() *T {
-	if s.componentPtr == nil {
-		s.updateCache()
-	}
-	if s.componentPtr == nil {
-		return nil
-	}
 	return (*T)(s.componentPtr)
-}
-
-// updateCache refreshes the cached pointer from storage
-func (s *Singleton[T]) updateCache() {
-	if s.storage == nil {
-		return
-	}
-	entry := s.storage.getSingletonEntry(s.componentType)
-	if entry != nil {
-		s.componentPtr = entry.dataPtr
-	} else {
-		s.componentPtr = nil
-	}
-}
-
-// Exists returns true if the singleton component has been added to storage
-func (s *Singleton[T]) Exists() bool {
-	if s.componentPtr == nil {
-		s.updateCache()
-	}
-	return s.componentPtr != nil
 }
