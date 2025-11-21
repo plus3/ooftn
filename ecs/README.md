@@ -151,3 +151,11 @@ func main() {
 	scheduler.Once(1)
 }
 ```
+
+## Safety
+
+The following are some tips to avoid unsafe behavior with this library:
+
+- When storing references to an entity that might be used at a later point, always create and store a `EntityRef` instead of an `EntityId`. An `EntityId` is fast but can be invalidated by adding components, removing components, or calling `Archetype.Compact()`.
+- Pointers to component data are not meant to be long lived. If you change the archetype of an entity (adding or removing components) or delete the entity these pointers are immedietly invalidated. You should always re-fetch and re-query component data on each update/frame.
+- The storage layer has no locking or concurrent-access protection. You should avoid spawning, deleting, adding components or removing components while actively querying/iterating over entities. Use a command buffer to defer these mutations properly.
