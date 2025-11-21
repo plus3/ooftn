@@ -14,6 +14,11 @@ type GridPosition struct {
 	X, Y int
 }
 
+type PreviousGridPosition struct {
+	X, Y         int
+	CellX, CellY int // Cached cell coordinates
+}
+
 type Velocity struct {
 	DX, DY float32
 }
@@ -187,6 +192,15 @@ type GameTime struct {
 	CurrentDay int
 }
 
+type PauseState struct {
+	Paused          bool
+	StepRequested   bool    // Set to true to advance one tick while paused
+	FramesToAdvance int     // Number of frames to advance while paused
+	TimeToAdvance   float32 // Total time to advance (in seconds)
+	TimeAdvanced    float32 // Time advanced so far
+	SkipUIRender    bool    // Set to true to skip UI rendering (for intermediate ticks)
+}
+
 type Camera struct {
 	X       float32
 	Y       float32
@@ -207,6 +221,15 @@ type InputState struct {
 type SpatialGrid struct {
 	CellSize int
 	Cells    map[[2]int][]ecs.EntityId
+}
+
+// FighterGrid is a specialized spatial grid that only contains fighters
+// This allows CombatSystem to skip iterating over non-fighter entities
+// Updated incrementally to avoid rebuilding every frame
+type FighterGrid struct {
+	CellSize    int
+	Cells       map[[2]int][]ecs.EntityId
+	Initialized bool
 }
 
 type RenderLayer int

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"log"
 	"math/rand/v2"
+	"net/http"
+	_ "net/http/pprof"
 
 	ebitenbackend "github.com/AllenDang/cimgui-go/backend/ebiten-backend"
 	"github.com/AllenDang/cimgui-go/imgui"
@@ -32,6 +35,17 @@ var pastelColors = [][3]uint8{
 }
 
 func main() {
+	// Start pprof HTTP server for profiling
+	go func() {
+		log.Println("Starting pprof server on http://localhost:6060/debug/pprof/")
+		log.Println("  CPU profile: http://localhost:6060/debug/pprof/profile?seconds=30")
+		log.Println("  Heap profile: http://localhost:6060/debug/pprof/heap")
+		log.Println("  Goroutine profile: http://localhost:6060/debug/pprof/goroutine")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Printf("pprof server error: %v", err)
+		}
+	}()
+
 	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
 	ebiten.SetWindowTitle("World Simulator - ECS Example")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
@@ -45,6 +59,7 @@ func main() {
 	registry := ecs.NewComponentRegistry()
 	ecs.RegisterComponent[Position](registry)
 	ecs.RegisterComponent[GridPosition](registry)
+	ecs.RegisterComponent[PreviousGridPosition](registry)
 	ecs.RegisterComponent[Velocity](registry)
 	ecs.RegisterComponent[Sprite](registry)
 	ecs.RegisterComponent[Name](registry)
@@ -72,6 +87,7 @@ func main() {
 	ecs.RegisterComponent[PerformanceMetrics](registry)
 	ecs.RegisterComponent[SimulationMetrics](registry)
 	ecs.RegisterComponent[PerformanceChart](registry)
+	ecs.RegisterComponent[PauseState](registry)
 
 	storage := ecs.NewStorage(registry)
 
@@ -105,6 +121,10 @@ func main() {
 		CellSize: 10,
 		Cells:    make(map[[2]int][]ecs.EntityId),
 	})
+	ecs.NewSingleton[FighterGrid](storage, FighterGrid{
+		CellSize: 10,
+		Cells:    make(map[[2]int][]ecs.EntityId),
+	})
 
 	ecs.NewSingleton[PendingDeaths](storage, PendingDeaths{
 		pending: make(map[ecs.EntityId]bool),
@@ -114,10 +134,15 @@ func main() {
 		LastFrameSamples: make([]float32, 0, 60),
 	})
 	ecs.NewSingleton[SimulationMetrics](storage, SimulationMetrics{})
+	ecs.NewSingleton[PauseState](storage, PauseState{
+		Paused:        false,
+		StepRequested: false,
+	})
 
 	initWorld(storage)
 
 	scheduler := ecs.NewScheduler(storage)
+	scheduler.Register(&PauseControlSystem{})
 	scheduler.Register(&ClearPendingDeathsSystem{})
 	scheduler.Register(&MetricsSystem{})
 	scheduler.Register(&debugui.ImguiSystem{})
@@ -125,6 +150,7 @@ func main() {
 	scheduler.Register(&ColonyManagementSystem{})
 	scheduler.Register(&MovementSystem{})
 	scheduler.Register(&SpatialGridSystem{})
+	scheduler.Register(&FighterGridSystem{})
 	scheduler.Register(&TaskAssignmentSystem{})
 	scheduler.Register(&WorkSystem{})
 	scheduler.Register(&HungerSystem{})
@@ -163,12 +189,34 @@ func (g *Game) Update() error {
 	var perf *PerformanceMetrics
 	g.Storage.ReadSingleton(&perf)
 
+	// Check if we're advancing time while paused - if so, run multiple ticks per frame
+	var pauseState *PauseState
+	g.Storage.ReadSingleton(&pauseState)
+
+	ticksPerFrame := 1
+	if pauseState != nil && pauseState.TimeToAdvance > 0 {
+		// Run 10 ticks per frame when advancing time (makes it 10x faster)
+		ticksPerFrame = 10
+	}
+
 	g.ImguiBackend.Get().BeginFrame()
 
-	g.Scheduler.Once(1.0 / 60.0)
+	for i := 0; i < ticksPerFrame; i++ {
+		// Only render UI on the last tick
+		if pauseState != nil {
+			pauseState.SkipUIRender = (i < ticksPerFrame-1)
+		}
+		g.Scheduler.Once(1.0 / 60.0)
+	}
 
 	if perf != nil {
-		perf.UpdateTime = float32(1.0 / 60.0)
+		// Calculate actual update time from scheduler stats
+		stats := g.Scheduler.GetStats()
+		totalUpdateTime := float32(0)
+		for _, sys := range stats.Systems {
+			totalUpdateTime += float32(sys.AvgDuration.Seconds())
+		}
+		perf.UpdateTime = totalUpdateTime
 	}
 
 	g.ImguiBackend.Get().EndFrame()
@@ -184,12 +232,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.Screen.Get().Image = screen
 
-	// g.RenderSystem.screen = screen
 	g.RenderScheduler.Once(0)
 
 	var perf *PerformanceMetrics
 	if g.Storage.ReadSingleton(&perf) {
-		perf.RenderTime = float32(1.0 / 60.0)
+		// Calculate actual render time from render scheduler stats
+		stats := g.RenderScheduler.GetStats()
+		totalRenderTime := float32(0)
+		for _, sys := range stats.Systems {
+			totalRenderTime += float32(sys.AvgDuration.Seconds())
+		}
+		perf.RenderTime = totalRenderTime
 	}
 
 	g.ImguiBackend.Get().Draw(screen)
@@ -296,9 +349,11 @@ func spawnColonistDirect(storage *ecs.Storage, colonyId ecs.EntityId, x, y int) 
 		colonyColor = colony.Color
 	}
 
+	cellSize := 10
 	storage.Spawn(
 		Position{X: float32(x), Y: float32(y)},
 		GridPosition{X: x, Y: y},
+		PreviousGridPosition{X: x, Y: y, CellX: x / cellSize, CellY: y / cellSize},
 		Sprite{
 			Color: colonyColor,
 			Scale: 0.4,
@@ -340,9 +395,11 @@ func spawnColonist(frame *ecs.UpdateFrame, colonyId ecs.EntityId, x, y int) {
 		colonyColor = colony.Color
 	}
 
+	cellSize := 10
 	frame.Commands.Spawn(
 		Position{X: float32(x), Y: float32(y)},
 		GridPosition{X: x, Y: y},
+		PreviousGridPosition{X: x, Y: y, CellX: x / cellSize, CellY: y / cellSize},
 		Sprite{
 			Color: colonyColor,
 			Scale: 0.4,

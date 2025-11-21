@@ -4,7 +4,6 @@ import (
 	"image/color"
 	"math"
 	"math/rand/v2"
-	"reflect"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -12,19 +11,66 @@ import (
 	"github.com/plus3/ooftn/ecs/debugui"
 )
 
+type PauseControlSystem struct {
+	PauseState ecs.Singleton[PauseState]
+}
+
+func (s *PauseControlSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+
+	// Handle time-based advancement
+	if pauseState.TimeToAdvance > 0 {
+		pauseState.TimeAdvanced += float32(frame.DeltaTime)
+
+		// Check if we've advanced enough time
+		if pauseState.TimeAdvanced >= pauseState.TimeToAdvance {
+			pauseState.TimeToAdvance = 0
+			pauseState.TimeAdvanced = 0
+			pauseState.FramesToAdvance = 0
+		}
+	} else if pauseState.FramesToAdvance > 0 {
+		// Handle frame-based advancement
+		pauseState.FramesToAdvance--
+		if pauseState.FramesToAdvance == 0 {
+			pauseState.TimeAdvanced = 0
+		}
+	}
+
+	// Reset step request after it's been processed
+	if pauseState.StepRequested {
+		pauseState.StepRequested = false
+	}
+}
+
+func (s *PauseControlSystem) ShouldRunSimulation() bool {
+	pauseState := s.PauseState.Get()
+	return !pauseState.Paused || pauseState.StepRequested || pauseState.FramesToAdvance > 0 || pauseState.TimeToAdvance > 0
+}
+
 type ClearPendingDeathsSystem struct {
 	PendingDeaths ecs.Singleton[PendingDeaths]
+	PauseState    ecs.Singleton[PauseState]
 }
 
 func (s *ClearPendingDeathsSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
 	clear(s.PendingDeaths.Get().pending)
 }
 
 type TimeSystem struct {
-	GameTime ecs.Singleton[GameTime]
+	GameTime   ecs.Singleton[GameTime]
+	PauseState ecs.Singleton[PauseState]
 }
 
 func (s *TimeSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	time := s.GameTime.Get()
 	time.Elapsed += float32(frame.DeltaTime)
 
@@ -35,14 +81,20 @@ func (s *TimeSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type SpatialGridSystem struct {
-	Grid     ecs.Singleton[SpatialGrid]
-	Entities ecs.Query[struct {
+	Grid       ecs.Singleton[SpatialGrid]
+	PauseState ecs.Singleton[PauseState]
+	Entities   ecs.Query[struct {
 		ecs.EntityId
 		*GridPosition
 	}]
 }
 
 func (s *SpatialGridSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	grid := s.Grid.Get()
 	clear(grid.Cells)
 
@@ -56,7 +108,8 @@ func (s *SpatialGridSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type ColonyManagementSystem struct {
-	Colonies ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Colonies   ecs.Query[struct {
 		ecs.EntityId
 		*Colony
 		*ColonyResources
@@ -71,6 +124,11 @@ type ColonyManagementSystem struct {
 }
 
 func (s *ColonyManagementSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	for colony := range s.Colonies.Iter() {
 		population := 0
 		roleCount := make(map[RoleType]int)
@@ -122,7 +180,8 @@ func (s *ColonyManagementSystem) reassignRole(frame *ecs.UpdateFrame, colonyId e
 }
 
 type TaskAssignmentSystem struct {
-	Colonists ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Colonists  ecs.Query[struct {
 		ecs.EntityId
 		*ColonyMember
 		*Role
@@ -143,6 +202,11 @@ type TaskAssignmentSystem struct {
 }
 
 func (s *TaskAssignmentSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	for colonist := range s.Colonists.Iter() {
 		if colonist.Task.Type != TaskIdle {
 			continue
@@ -242,7 +306,8 @@ func (s *TaskAssignmentSystem) assignFarmTask(frame *ecs.UpdateFrame, colonist s
 }
 
 type MovementSystem struct {
-	Moving ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Moving     ecs.Query[struct {
 		*Position
 		*GridPosition
 		*Task
@@ -252,6 +317,11 @@ type MovementSystem struct {
 }
 
 func (s *MovementSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	for entity := range s.Moving.Iter() {
 		if entity.Task.Type == TaskIdle {
 			continue
@@ -285,7 +355,8 @@ func (s *MovementSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type WorkSystem struct {
-	Workers ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Workers    ecs.Query[struct {
 		ecs.EntityId
 		*Task
 		*GridPosition
@@ -309,6 +380,11 @@ type WorkSystem struct {
 }
 
 func (s *WorkSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	for worker := range s.Workers.Iter() {
 		if worker.Task.Type == TaskIdle || worker.Task.Type == TaskWander {
 			continue
@@ -450,7 +526,8 @@ func (s *WorkSystem) processReturn(frame *ecs.UpdateFrame, worker struct {
 }
 
 type HungerSystem struct {
-	Living ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Living     ecs.Query[struct {
 		ecs.EntityId
 		*Stats
 		*ColonyMember
@@ -463,6 +540,11 @@ type HungerSystem struct {
 }
 
 func (s *HungerSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	pending := s.PendingDeaths.Get().pending
 	for entity := range s.Living.Iter() {
 		entity.Stats.Hunger += int(float32(frame.DeltaTime) * 2)
@@ -495,6 +577,7 @@ func (s *HungerSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type ReproductionSystem struct {
+	PauseState       ecs.Singleton[PauseState]
 	FertileColonists ecs.Query[struct {
 		ecs.EntityId
 		*ColonyMember
@@ -511,6 +594,11 @@ type ReproductionSystem struct {
 }
 
 func (s *ReproductionSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	time := s.GameTime.Get()
 
 	for colonist := range s.FertileColonists.Iter() {
@@ -543,93 +631,230 @@ func (s *ReproductionSystem) Execute(frame *ecs.UpdateFrame) {
 	}
 }
 
+// FighterGridSystem maintains a spatial grid containing only fighters
+type FighterGridSystem struct {
+	PauseState ecs.Singleton[PauseState]
+	Fighters   ecs.Query[struct {
+		ecs.EntityId
+		*GridPosition
+		*Combat
+	}]
+	FighterGrid ecs.Singleton[FighterGrid]
+}
+
+func (s *FighterGridSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
+	grid := s.FighterGrid.Get()
+
+	// Clear and rebuild - reuse slice capacity to avoid allocations
+	for k := range grid.Cells {
+		grid.Cells[k] = grid.Cells[k][:0]
+	}
+
+	// Rebuild with only fighters
+	for fighter := range s.Fighters.Iter() {
+		cellX := fighter.GridPosition.X / grid.CellSize
+		cellY := fighter.GridPosition.Y / grid.CellSize
+		cellKey := [2]int{cellX, cellY}
+
+		grid.Cells[cellKey] = append(grid.Cells[cellKey], fighter.EntityId)
+	}
+}
+
 type CombatSystem struct {
-	Fighters ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Camera     ecs.Singleton[Camera]
+	Fighters   ecs.Query[struct {
 		ecs.EntityId
 		*Combat
 		*GridPosition
 		*Stats
 		*ColonyMember
 	}]
-	Grid          ecs.Singleton[SpatialGrid]
+	FighterGrid   ecs.Singleton[FighterGrid]
 	PendingDeaths ecs.Singleton[PendingDeaths]
+
+	// Cache for fast lookups
+	fighterCache map[ecs.EntityId]*combatData
+
+	// Rate limiting: rotate through fighters over multiple frames
+	frameCounter uint64
+	rotationRate int // Check 1/Nth of fighters per frame
+}
+
+// combatData holds cached component data for fast lookup
+type combatData struct {
+	combat       *Combat
+	gridPos      *GridPosition
+	stats        *Stats
+	colonyMember *ColonyMember
+	colonyId     ecs.EntityId // Cached resolved colony ID
+	hasColony    bool         // Whether colony ref is valid
 }
 
 func (s *CombatSystem) Execute(frame *ecs.UpdateFrame) {
-	grid := s.Grid.Get()
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
+	camera := s.Camera.Get()
+	grid := s.FighterGrid.Get()
 	pending := s.PendingDeaths.Get().pending
 
+	// Initialize rotation rate (check 1/5 of off-screen fighters per frame)
+	// This means off-screen combat updates at 12fps when game runs at 60fps
+	if s.rotationRate == 0 {
+		s.rotationRate = 5
+	}
+	s.frameCounter++
+	currentBucket := s.frameCounter % uint64(s.rotationRate)
+
+	// Combat LOD: skip detailed combat when zoomed out
+	skipDetailedCombat := camera.Zoom < 0.5
+
+	// Calculate visible area with some padding for combat range
+	const combatPadding = 100.0
+	screenWidth := float64(1920.0 / camera.Zoom)
+	screenHeight := float64(1080.0 / camera.Zoom)
+	minVisibleX := float64(camera.X) - screenWidth/2 - combatPadding
+	maxVisibleX := float64(camera.X) + screenWidth/2 + combatPadding
+	minVisibleY := float64(camera.Y) - screenHeight/2 - combatPadding
+	maxVisibleY := float64(camera.Y) + screenHeight/2 + combatPadding
+
+	// Build cache using query (no reflection!)
+	if s.fighterCache == nil {
+		s.fighterCache = make(map[ecs.EntityId]*combatData, 1000)
+	}
+	clear(s.fighterCache)
+
+	for fighter := range s.Fighters.Iter() {
+		// Resolve colony ref once and cache it
+		colonyId, hasColony := frame.Storage.ResolveEntityRef(fighter.ColonyMember.ColonyRef)
+
+		s.fighterCache[fighter.EntityId] = &combatData{
+			combat:       fighter.Combat,
+			gridPos:      fighter.GridPosition,
+			stats:        fighter.Stats,
+			colonyMember: fighter.ColonyMember,
+			colonyId:     colonyId,
+			hasColony:    hasColony,
+		}
+	}
+
+	// Use cache for combat checks
+	// Get cached colony info for f1 once before inner loops
+	fighterIndex := uint64(0)
 	for f1 := range s.Fighters.Iter() {
+		// Rate limiting: only check fighters in current bucket
+		// Fighters on screen get checked every frame (priority)
+		f1X := float64(f1.GridPosition.X)
+		f1Y := float64(f1.GridPosition.Y)
+		isOnScreen := f1X >= minVisibleX && f1X <= maxVisibleX && f1Y >= minVisibleY && f1Y <= maxVisibleY
+
+		if !isOnScreen {
+			// Off-screen fighters: rotate through buckets
+			if fighterIndex%uint64(s.rotationRate) != currentBucket {
+				fighterIndex++
+				continue
+			}
+		}
+		fighterIndex++
+
 		if pending[f1.EntityId] {
 			continue
 		}
-		cellX := f1.GridPosition.X / grid.CellSize
-		cellY := f1.GridPosition.Y / grid.CellSize
+
+		f1Data := s.fighterCache[f1.EntityId]
+		if !f1Data.hasColony {
+			continue // Can't fight without a colony
+		}
+
+		// Combat LOD: skip fighters when zoomed out
+		if skipDetailedCombat {
+			continue
+		}
+
+		// Cache f1 data to avoid repeated field access
+		// (f1X, f1Y already calculated above for rate limiting)
+		f1PosX := f1.GridPosition.X
+		f1PosY := f1.GridPosition.Y
+		f1EntityId := f1.EntityId
+		cellX := f1PosX / grid.CellSize
+		cellY := f1PosY / grid.CellSize
 
 		for dx := -1; dx <= 1; dx++ {
 			for dy := -1; dy <= 1; dy++ {
 				cellKey := [2]int{cellX + dx, cellY + dy}
-				if entitiesInCell, ok := grid.Cells[cellKey]; ok {
-					for _, entityId := range entitiesInCell {
-						if f1.EntityId >= entityId || pending[entityId] {
-							continue
-						}
+				entitiesInCell := grid.Cells[cellKey]
 
-						comp := frame.Storage.GetComponent(entityId, reflect.TypeOf(Combat{}))
-						if comp == nil {
-							continue
-						}
-						f2Combat := comp.(*Combat)
+				for _, entityId := range entitiesInCell {
+					if f1EntityId >= entityId {
+						continue
+					}
 
-						f2GridPosComp := frame.Storage.GetComponent(entityId, reflect.TypeOf(GridPosition{}))
-						if f2GridPosComp == nil {
-							continue
-						}
-						f2GridPos := f2GridPosComp.(*GridPosition)
+					// Check pending without map lookup in hot path
+					if pending[entityId] {
+						continue
+					}
 
-						f2StatsComp := frame.Storage.GetComponent(entityId, reflect.TypeOf(Stats{}))
-						if f2StatsComp == nil {
-							continue
-						}
-						f2Stats := f2StatsComp.(*Stats)
+					// Use cache instead of GetComponent (no reflection!)
+					f2Data, exists := s.fighterCache[entityId]
+					if !exists {
+						continue // Not in cache (shouldn't happen, but be defensive)
+					}
 
-						f2ColonyMemberComp := frame.Storage.GetComponent(entityId, reflect.TypeOf(ColonyMember{}))
-						if f2ColonyMemberComp == nil {
-							continue
-						}
-						f2ColonyMember := f2ColonyMemberComp.(*ColonyMember)
+					// Use cached colony IDs instead of resolving refs
+					if !f2Data.hasColony || f1Data.colonyId == f2Data.colonyId {
+						continue // Same colony or no colony
+					}
 
-						col1, valid1 := frame.Storage.ResolveEntityRef(f1.ColonyMember.ColonyRef)
-						col2, valid2 := frame.Storage.ResolveEntityRef(f2ColonyMember.ColonyRef)
+					// Early distance check before accessing more data
+					// Use cheaper absolute value checks first
+					dx := f1PosX - f2Data.gridPos.X
+					if dx < 0 {
+						dx = -dx
+					}
+					if dx > 2 {
+						continue // Too far in X direction
+					}
 
-						if !valid1 || !valid2 || col1 == col2 {
-							continue
-						}
+					dy := f1PosY - f2Data.gridPos.Y
+					if dy < 0 {
+						dy = -dy
+					}
+					if dy > 2 {
+						continue // Too far in Y direction
+					}
 
-						dx := f1.GridPosition.X - f2GridPos.X
-						dy := f1.GridPosition.Y - f2GridPos.Y
-						distSq := dx*dx + dy*dy
+					// Only compute squared distance if within bounding box
+					distSq := dx*dx + dy*dy
+					if distSq <= 4 {
+						// Now access combat data only if in range
+						f2Combat := f2Data.combat
+						f2Stats := f2Data.stats
+						f1.Combat.AttackTimer += float32(frame.DeltaTime)
+						f2Combat.AttackTimer += float32(frame.DeltaTime)
 
-						if distSq <= 4 {
-							f1.Combat.AttackTimer += float32(frame.DeltaTime)
-							f2Combat.AttackTimer += float32(frame.DeltaTime)
-
-							if f1.Combat.AttackTimer >= 1.0/f1.Combat.AttackSpeed {
-								f2Stats.Health -= f1.Combat.AttackPower
-								f1.Combat.AttackTimer = 0
-								if f2Stats.Health <= 0 && !pending[entityId] {
-									frame.Commands.AddComponent(entityId, Dead{})
-									pending[entityId] = true
-								}
+						if f1.Combat.AttackTimer >= 1.0/f1.Combat.AttackSpeed {
+							f2Stats.Health -= f1.Combat.AttackPower
+							f1.Combat.AttackTimer = 0
+							if f2Stats.Health <= 0 && !pending[entityId] {
+								frame.Commands.AddComponent(entityId, Dead{})
+								pending[entityId] = true
 							}
+						}
 
-							if f2Combat.AttackTimer >= 1.0/f2Combat.AttackSpeed {
-								f1.Stats.Health -= f2Combat.AttackPower
-								f2Combat.AttackTimer = 0
-								if f1.Stats.Health <= 0 && !pending[f1.EntityId] {
-									frame.Commands.AddComponent(f1.EntityId, Dead{})
-									pending[f1.EntityId] = true
-								}
+						if f2Combat.AttackTimer >= 1.0/f2Combat.AttackSpeed {
+							f1.Stats.Health -= f2Combat.AttackPower
+							f2Combat.AttackTimer = 0
+							if f1.Stats.Health <= 0 && !pending[f1.EntityId] {
+								frame.Commands.AddComponent(f1.EntityId, Dead{})
+								pending[f1.EntityId] = true
 							}
 						}
 					}
@@ -640,7 +865,8 @@ func (s *CombatSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type LifespanSystem struct {
-	Aging ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Aging      ecs.Query[struct {
 		ecs.EntityId
 		*Lifespan
 		*Stats
@@ -650,6 +876,11 @@ type LifespanSystem struct {
 }
 
 func (s *LifespanSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	time := s.GameTime.Get()
 	pending := s.PendingDeaths.Get().pending
 
@@ -665,25 +896,37 @@ func (s *LifespanSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type DeathSystem struct {
-	Dead ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Dead       ecs.Query[struct {
 		ecs.EntityId
 		*Dead
 	}]
 }
 
 func (s *DeathSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	for entity := range s.Dead.Iter() {
 		frame.Commands.Delete(entity.EntityId)
 	}
 }
 
 type ResourceRegrowthSystem struct {
-	Resources ecs.Query[struct {
+	PauseState ecs.Singleton[PauseState]
+	Resources  ecs.Query[struct {
 		*Resource
 	}]
 }
 
 func (s *ResourceRegrowthSystem) Execute(frame *ecs.UpdateFrame) {
+	pauseState := s.PauseState.Get()
+	if pauseState.Paused && !pauseState.StepRequested && pauseState.TimeToAdvance == 0 {
+		return
+	}
+
 	for resource := range s.Resources.Iter() {
 		if resource.Resource.Amount < resource.Resource.MaxAmount {
 			resource.Resource.RegrowthTime += float32(frame.DeltaTime)
@@ -757,22 +1000,8 @@ func (s *CameraControlSystem) Execute(frame *ecs.UpdateFrame) {
 type RenderSystem struct {
 	Camera      ecs.Singleton[Camera]
 	WorldConfig ecs.Singleton[WorldConfig]
+	Grid        ecs.Singleton[SpatialGrid]
 
-	Resources ecs.Query[struct {
-		*Position
-		*Sprite
-		*Resource
-	}]
-	Structures ecs.Query[struct {
-		*Position
-		*Sprite
-		*Structure
-	}]
-	Colonists ecs.Query[struct {
-		*Position
-		*Sprite
-		*Stats
-	}]
 	Colonies ecs.Query[struct {
 		ecs.EntityId
 		*Colony
@@ -781,17 +1010,51 @@ type RenderSystem struct {
 	}]
 	Screen ecs.Singleton[Screen]
 
+	// Queries for efficient component access (no reflection)
+	RenderableEntities ecs.Query[struct {
+		ecs.EntityId
+		*Position
+		*Sprite
+	}]
+
+	RenderableResources ecs.Query[struct {
+		ecs.EntityId
+		*Position
+		*Sprite
+		*Resource
+	}]
+
+	ColonistsWithHealth ecs.Query[struct {
+		ecs.EntityId
+		*Position
+		*Sprite
+		*Stats
+		*ColonyMember
+	}]
+
 	tileCache      *ebiten.Image
 	lastCameraX    float32
 	lastCameraY    float32
 	lastCameraZoom float32
 	tileCacheValid bool
+
+	// Cache for fast spatial lookups
+	entityCache map[ecs.EntityId]*renderData
+}
+
+// renderData holds cached component data for fast lookup
+type renderData struct {
+	pos          *Position
+	sprite       *Sprite
+	resource     *Resource     // nil if not a resource
+	stats        *Stats        // nil if not a colonist
+	colonyMember *ColonyMember // nil if not a colonist
 }
 
 func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 	camera := s.Camera.Get()
 	config := s.WorldConfig.Get()
-
+	grid := s.Grid.Get()
 	screen := s.Screen.Get().Image
 
 	screen.Fill(color.RGBA{245, 245, 240, 255})
@@ -826,47 +1089,86 @@ func (s *RenderSystem) Execute(frame *ecs.UpdateFrame) {
 		screen.DrawImage(s.tileCache, opts)
 	}
 
+	// Build cache using queries (no reflection!)
+	if s.entityCache == nil {
+		s.entityCache = make(map[ecs.EntityId]*renderData, 1000)
+	}
+	clear(s.entityCache)
+
+	// Cache colonists with health bars
+	for colonist := range s.ColonistsWithHealth.Iter() {
+		s.entityCache[colonist.EntityId] = &renderData{
+			pos:          colonist.Position,
+			sprite:       colonist.Sprite,
+			stats:        colonist.Stats,
+			colonyMember: colonist.ColonyMember,
+		}
+	}
+
+	// Cache resources
+	for resource := range s.RenderableResources.Iter() {
+		s.entityCache[resource.EntityId] = &renderData{
+			pos:      resource.Position,
+			sprite:   resource.Sprite,
+			resource: resource.Resource,
+		}
+	}
+
+	// Cache other renderable entities (won't overwrite colonists/resources due to ECS archetype separation)
+	for entity := range s.RenderableEntities.Iter() {
+		if _, exists := s.entityCache[entity.EntityId]; !exists {
+			s.entityCache[entity.EntityId] = &renderData{
+				pos:    entity.Position,
+				sprite: entity.Sprite,
+			}
+		}
+	}
+
+	// Use spatial grid for culling, but lookup cached data
 	minWorldX := camera.X - 20
 	maxWorldX := camera.X + float32(camera.ScreenW)/(cellSize*camera.Zoom) + 20
 	minWorldY := camera.Y - 20
 	maxWorldY := camera.Y + float32(camera.ScreenH)/(cellSize*camera.Zoom) + 20
 
-	for resource := range s.Resources.Iter() {
-		if resource.Resource.Amount <= 0 {
-			continue
+	minCellX := int(minWorldX) / grid.CellSize
+	maxCellX := int(maxWorldX) / grid.CellSize
+	minCellY := int(minWorldY) / grid.CellSize
+	maxCellY := int(maxWorldY) / grid.CellSize
+
+	// LOD: Skip rendering individual entities when zoomed out too far
+	// At low zoom levels, individual entities are tiny (< 2 pixels) and not visible anyway
+	skipDetailedRendering := camera.Zoom < 0.8
+
+	if !skipDetailedRendering {
+		for x := minCellX; x <= maxCellX; x++ {
+			for y := minCellY; y <= maxCellY; y++ {
+				cellKey := [2]int{x, y}
+				if entitiesInCell, ok := grid.Cells[cellKey]; ok {
+					for _, entityId := range entitiesInCell {
+						data, exists := s.entityCache[entityId]
+						if !exists {
+							continue
+						}
+
+						// Skip resources with 0 amount
+						if data.resource != nil && data.resource.Amount <= 0 {
+							continue
+						}
+
+						// Render the entity
+						s.renderEntity(screen, data.pos, data.sprite, camera, cellSize)
+
+						// Render health bar for colonists (skip at medium-low zoom)
+						if data.stats != nil && data.colonyMember != nil && camera.Zoom > 1.2 {
+							s.renderHealthBar(screen, data.pos, data.sprite, data.stats, camera, cellSize)
+						}
+					}
+				}
+			}
 		}
-		if resource.Position.X < minWorldX || resource.Position.X > maxWorldX || resource.Position.Y < minWorldY || resource.Position.Y > maxWorldY {
-			continue
-		}
-		s.renderEntity(screen, resource.Position, resource.Sprite, camera, cellSize)
 	}
 
-	for structure := range s.Structures.Iter() {
-		if structure.Position.X < minWorldX || structure.Position.X > maxWorldX || structure.Position.Y < minWorldY || structure.Position.Y > maxWorldY {
-			continue
-		}
-		s.renderEntity(screen, structure.Position, structure.Sprite, camera, cellSize)
-	}
-
-	for colonist := range s.Colonists.Iter() {
-		if colonist.Position.X < minWorldX || colonist.Position.X > maxWorldX || colonist.Position.Y < minWorldY || colonist.Position.Y > maxWorldY {
-			continue
-		}
-		s.renderEntity(screen, colonist.Position, colonist.Sprite, camera, cellSize)
-
-		wx := colonist.Position.X - camera.X
-		wy := colonist.Position.Y - camera.Y
-		sx := wx * camera.Zoom * cellSize
-		sy := wy * camera.Zoom * cellSize
-
-		healthPct := float32(colonist.Stats.Health) / float32(colonist.Stats.MaxHealth)
-		barWidth := cellSize * camera.Zoom * colonist.Sprite.Scale
-		barHeight := float32(2)
-
-		vector.DrawFilledRect(screen, sx-barWidth/2, sy-barHeight-5, barWidth, barHeight, color.RGBA{100, 100, 100, 255}, false)
-		vector.DrawFilledRect(screen, sx-barWidth/2, sy-barHeight-5, barWidth*healthPct, barHeight, color.RGBA{100, 200, 100, 255}, false)
-	}
-
+	// Render colony markers
 	for colony := range s.Colonies.Iter() {
 		wx := float32(colony.GridPosition.X) - camera.X
 		wy := float32(colony.GridPosition.Y) - camera.Y
@@ -945,4 +1247,20 @@ func (s *RenderSystem) renderEntity(screen *ebiten.Image, pos *Position, sprite 
 	case ShapeTriangle:
 		vector.DrawFilledRect(screen, sx-size/2, sy-size/2, size, size, c, false)
 	}
+}
+
+func (s *RenderSystem) renderHealthBar(screen *ebiten.Image, pos *Position, sprite *Sprite, stats *Stats, camera *Camera, cellSize float32) {
+	wx := pos.X - camera.X
+	wy := pos.Y - camera.Y
+	sx := wx * camera.Zoom * cellSize
+	sy := wy * camera.Zoom * cellSize
+
+	healthPct := float32(stats.Health) / float32(stats.MaxHealth)
+	barWidth := cellSize * camera.Zoom * sprite.Scale
+	barHeight := float32(2)
+
+	// Background bar
+	vector.DrawFilledRect(screen, sx-barWidth/2, sy-barHeight-5, barWidth, barHeight, color.RGBA{100, 100, 100, 255}, false)
+	// Health bar
+	vector.DrawFilledRect(screen, sx-barWidth/2, sy-barHeight-5, barWidth*healthPct, barHeight, color.RGBA{100, 200, 100, 255}, false)
 }

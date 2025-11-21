@@ -13,14 +13,18 @@ import (
 const fpsHistorySize = 100
 
 type PerformanceChart struct {
-	FPSSamples []float32
-	Offset     int
+	FPSSamples       []float32
+	Offset           int
+	SystemLatency    map[string][]float32     // Per-system latency history
+	ColonyPopulation map[ecs.EntityId][]int32 // Per-colony population history
 }
 
 func NewPerformanceChart() *PerformanceChart {
 	return &PerformanceChart{
-		FPSSamples: make([]float32, fpsHistorySize),
-		Offset:     0,
+		FPSSamples:       make([]float32, fpsHistorySize),
+		Offset:           0,
+		SystemLatency:    make(map[string][]float32),
+		ColonyPopulation: make(map[ecs.EntityId][]int32),
 	}
 }
 
@@ -29,6 +33,14 @@ func spawnECSDebugWindow(storage *ecs.Storage) {
 		Render: func() {
 			var perf *PerformanceMetrics
 			if !storage.ReadSingleton(&perf) {
+				return
+			}
+
+			var pauseState *PauseState
+			storage.ReadSingleton(&pauseState)
+
+			// Skip UI rendering during intermediate ticks
+			if pauseState != nil && pauseState.SkipUIRender {
 				return
 			}
 
@@ -65,6 +77,14 @@ func spawnSimulationStatsWindow(storage *ecs.Storage) {
 			storage.ReadSingleton(&gameTime)
 			storage.ReadSingleton(&worldConfig)
 
+			var pauseState *PauseState
+			storage.ReadSingleton(&pauseState)
+
+			// Skip UI rendering during intermediate ticks
+			if pauseState != nil && pauseState.SkipUIRender {
+				return
+			}
+
 			imgui.SetNextWindowPosV(imgui.NewVec2(10, 270), imgui.CondOnce, imgui.NewVec2(0, 0))
 			imgui.SetNextWindowSizeV(imgui.NewVec2(300, 220), imgui.CondOnce)
 
@@ -97,6 +117,14 @@ func spawnSimulationStatsWindow(storage *ecs.Storage) {
 func spawnColonyInfoWindow(storage *ecs.Storage) {
 	storage.Spawn(debugui.ImguiItem{
 		Render: func() {
+			var pauseState *PauseState
+			storage.ReadSingleton(&pauseState)
+
+			// Skip UI rendering during intermediate ticks
+			if pauseState != nil && pauseState.SkipUIRender {
+				return
+			}
+
 			imgui.SetNextWindowPosV(imgui.NewVec2(320, 10), imgui.CondOnce, imgui.NewVec2(0, 0))
 			imgui.SetNextWindowSizeV(imgui.NewVec2(350, 400), imgui.CondOnce)
 
@@ -172,6 +200,14 @@ func spawnColonyInfoWindow(storage *ecs.Storage) {
 func spawnSystemPerformanceWindow(storage *ecs.Storage, scheduler *ecs.Scheduler) {
 	storage.Spawn(debugui.ImguiItem{
 		Render: func() {
+			var pauseState *PauseState
+			storage.ReadSingleton(&pauseState)
+
+			// Skip UI rendering during intermediate ticks
+			if pauseState != nil && pauseState.SkipUIRender {
+				return
+			}
+
 			stats := scheduler.GetStats()
 
 			imgui.SetNextWindowPosV(imgui.NewVec2(680, 10), imgui.CondOnce, imgui.NewVec2(0, 0))
@@ -239,7 +275,7 @@ func spawnSystemPerformanceWindow(storage *ecs.Storage, scheduler *ecs.Scheduler
 	})
 }
 
-func spawnPerformanceChartWindow(storage *ecs.Storage) {
+func spawnPerformanceChartWindow(storage *ecs.Storage, scheduler *ecs.Scheduler) {
 	storage.Spawn(debugui.ImguiItem{
 		Render: func() {
 			var perf *PerformanceMetrics
@@ -252,23 +288,237 @@ func spawnPerformanceChartWindow(storage *ecs.Storage) {
 				return
 			}
 
-			// Add current values to history
+			var pauseState *PauseState
+			storage.ReadSingleton(&pauseState)
+
+			// Skip UI rendering during intermediate ticks
+			if pauseState != nil && pauseState.SkipUIRender {
+				return
+			}
+
+			// Add current FPS to history
 			chartData.FPSSamples[chartData.Offset] = float32(perf.AvgFPS)
 			chartData.Offset = (chartData.Offset + 1) % fpsHistorySize
+
+			// Update system latency history
+			stats := scheduler.GetStats()
+			for _, sys := range stats.Systems {
+				if chartData.SystemLatency[sys.Name] == nil {
+					chartData.SystemLatency[sys.Name] = make([]float32, fpsHistorySize)
+				}
+				latencyMs := float32(sys.AvgDuration.Microseconds()) / 1000.0
+				chartData.SystemLatency[sys.Name][chartData.Offset] = latencyMs
+			}
+
+			// Update colony population history
+			colonies := ecs.NewView[struct {
+				ecs.EntityId
+				*Colony
+			}](storage)
+			for colony := range colonies.Iter() {
+				if chartData.ColonyPopulation[colony.EntityId] == nil {
+					chartData.ColonyPopulation[colony.EntityId] = make([]int32, fpsHistorySize)
+				}
+				chartData.ColonyPopulation[colony.EntityId][chartData.Offset] = int32(colony.Colony.Population)
+			}
 
 			plotSamples := make([]float32, fpsHistorySize)
 			copy(plotSamples, chartData.FPSSamples[chartData.Offset:])
 			copy(plotSamples[fpsHistorySize-chartData.Offset:], chartData.FPSSamples[:chartData.Offset])
 
 			imgui.SetNextWindowPosV(imgui.NewVec2(10, 500), imgui.CondOnce, imgui.NewVec2(0, 0))
-			imgui.SetNextWindowSizeV(imgui.NewVec2(400, 200), imgui.CondOnce)
+			imgui.SetNextWindowSizeV(imgui.NewVec2(600, 400), imgui.CondOnce)
 
 			if imgui.BeginV("Performance Charts", nil, 0) {
-				if implot.BeginPlotV("FPS", imgui.NewVec2(-1, 0), 0) {
-					implot.SetupAxesV("Frame", "FPS", 0, implot.AxisFlagsAutoFit)
-					implot.PlotLineFloatPtrInt("FPS", &plotSamples[0], int32(len(plotSamples)))
-					implot.EndPlot()
+				if imgui.BeginTabBar("ChartTabs") {
+					// FPS Tab
+					if imgui.BeginTabItem("FPS") {
+						if implot.BeginPlotV("FPS Over Time", imgui.NewVec2(-1, -1), 0) {
+							implot.SetupAxesV("Frame", "FPS", 0, implot.AxisFlagsAutoFit)
+							implot.PlotLineFloatPtrInt("FPS", &plotSamples[0], int32(len(plotSamples)))
+							implot.EndPlot()
+						}
+						imgui.EndTabItem()
+					}
+
+					// System Latency Tab
+					if imgui.BeginTabItem("System Latency") {
+						// Sort system names alphabetically for stable legend order
+						systemNames := make([]string, 0, len(chartData.SystemLatency))
+						for sysName := range chartData.SystemLatency {
+							systemNames = append(systemNames, sysName)
+						}
+						sort.Strings(systemNames)
+
+						// Calculate max value for auto-scaling
+						maxLatency := float32(1.0)
+						for _, sysName := range systemNames {
+							latencyData := chartData.SystemLatency[sysName]
+							for _, val := range latencyData {
+								if val > maxLatency {
+									maxLatency = val
+								}
+							}
+						}
+						// Add 10% padding to the max
+						yMax := float64(maxLatency * 1.1)
+						if yMax < 1.0 {
+							yMax = 1.0
+						}
+
+						if implot.BeginPlotV("System Performance", imgui.NewVec2(-1, -1), 0) {
+							implot.SetupAxesV("Frame", "Time (ms)", 0, 0)
+							implot.SetupAxisLimitsV(implot.AxisY1, 0, yMax, implot.CondAlways)
+
+							for _, sysName := range systemNames {
+								latencyData := chartData.SystemLatency[sysName]
+								sysPlotSamples := make([]float32, fpsHistorySize)
+								copy(sysPlotSamples, latencyData[chartData.Offset:])
+								copy(sysPlotSamples[fpsHistorySize-chartData.Offset:], latencyData[:chartData.Offset])
+								implot.PlotLineFloatPtrInt(sysName, &sysPlotSamples[0], int32(len(sysPlotSamples)))
+							}
+
+							implot.EndPlot()
+						}
+						imgui.EndTabItem()
+					}
+
+					// Colony Population Tab
+					if imgui.BeginTabItem("Colony Population") {
+						// Sort colony IDs for stable legend order
+						colonyIds := make([]ecs.EntityId, 0, len(chartData.ColonyPopulation))
+						for colonyId := range chartData.ColonyPopulation {
+							colonyIds = append(colonyIds, colonyId)
+						}
+						sort.Slice(colonyIds, func(i, j int) bool {
+							return colonyIds[i] < colonyIds[j]
+						})
+
+						// Calculate max value for auto-scaling
+						maxPopulation := int32(10)
+						for _, colonyId := range colonyIds {
+							popData := chartData.ColonyPopulation[colonyId]
+							for _, val := range popData {
+								if val > maxPopulation {
+									maxPopulation = val
+								}
+							}
+						}
+						// Add 10% padding to the max
+						yMax := float64(float32(maxPopulation) * 1.1)
+						if yMax < 10.0 {
+							yMax = 10.0
+						}
+
+						if implot.BeginPlotV("Population Over Time", imgui.NewVec2(-1, -1), 0) {
+							implot.SetupAxesV("Frame", "Population", 0, 0)
+							implot.SetupAxisLimitsV(implot.AxisY1, 0, yMax, implot.CondAlways)
+
+							for _, colonyId := range colonyIds {
+								popData := chartData.ColonyPopulation[colonyId]
+								popPlotSamples := make([]int32, fpsHistorySize)
+								copy(popPlotSamples, popData[chartData.Offset:])
+								copy(popPlotSamples[fpsHistorySize-chartData.Offset:], popData[:chartData.Offset])
+
+								// Convert to float32 for plotting
+								popFloatSamples := make([]float32, fpsHistorySize)
+								for i, val := range popPlotSamples {
+									popFloatSamples[i] = float32(val)
+								}
+
+								colonyName := fmt.Sprintf("Colony %d", colonyId&0xFFFFFFFF)
+								implot.PlotLineFloatPtrInt(colonyName, &popFloatSamples[0], int32(len(popFloatSamples)))
+							}
+
+							implot.EndPlot()
+						}
+						imgui.EndTabItem()
+					}
+
+					imgui.EndTabBar()
 				}
+				imgui.End()
+			}
+		},
+	})
+}
+
+func spawnPauseControlWindow(storage *ecs.Storage) {
+	storage.Spawn(debugui.ImguiItem{
+		Render: func() {
+			var pauseState *PauseState
+			if !storage.ReadSingleton(&pauseState) {
+				return
+			}
+
+			// Skip UI rendering during intermediate ticks
+			if pauseState.SkipUIRender {
+				return
+			}
+
+			imgui.SetNextWindowPosV(imgui.NewVec2(680, 420), imgui.CondOnce, imgui.NewVec2(0, 0))
+			imgui.SetNextWindowSizeV(imgui.NewVec2(250, 180), imgui.CondOnce)
+
+			if imgui.BeginV("Simulation Control", nil, 0) {
+				if pauseState.Paused {
+					imgui.PushStyleColorVec4(imgui.ColButton, imgui.NewVec4(0.2, 0.7, 0.2, 1.0))
+					imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.NewVec4(0.3, 0.8, 0.3, 1.0))
+					imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.NewVec4(0.1, 0.6, 0.1, 1.0))
+					if imgui.Button("Resume") {
+						pauseState.Paused = false
+						pauseState.TimeToAdvance = 0
+						pauseState.TimeAdvanced = 0
+						pauseState.FramesToAdvance = 0
+					}
+					imgui.PopStyleColor()
+					imgui.PopStyleColor()
+					imgui.PopStyleColor()
+
+					imgui.TextColored(imgui.NewVec4(1.0, 0.8, 0.0, 1.0), "PAUSED")
+
+					// Show progress if advancing
+					if pauseState.TimeToAdvance > 0 {
+						progress := pauseState.TimeAdvanced / pauseState.TimeToAdvance
+						imgui.ProgressBarV(progress, imgui.NewVec2(-1, 0), fmt.Sprintf("%.1f/%.1fs", pauseState.TimeAdvanced, pauseState.TimeToAdvance))
+					}
+
+					imgui.Separator()
+					imgui.Text("Step Forward:")
+
+					if imgui.Button("1 Tick") {
+						pauseState.StepRequested = true
+					}
+
+					imgui.SameLine()
+					if imgui.Button("1 Second") {
+						pauseState.TimeToAdvance = 1.0
+						pauseState.TimeAdvanced = 0
+					}
+
+					if imgui.Button("5 Seconds") {
+						pauseState.TimeToAdvance = 5.0
+						pauseState.TimeAdvanced = 0
+					}
+
+					imgui.SameLine()
+					if imgui.Button("1 Minute") {
+						pauseState.TimeToAdvance = 60.0
+						pauseState.TimeAdvanced = 0
+					}
+				} else {
+					imgui.PushStyleColorVec4(imgui.ColButton, imgui.NewVec4(0.7, 0.2, 0.2, 1.0))
+					imgui.PushStyleColorVec4(imgui.ColButtonHovered, imgui.NewVec4(0.8, 0.3, 0.3, 1.0))
+					imgui.PushStyleColorVec4(imgui.ColButtonActive, imgui.NewVec4(0.6, 0.1, 0.1, 1.0))
+					if imgui.Button("Pause") {
+						pauseState.Paused = true
+					}
+					imgui.PopStyleColor()
+					imgui.PopStyleColor()
+					imgui.PopStyleColor()
+
+					imgui.TextColored(imgui.NewVec4(0.0, 1.0, 0.0, 1.0), "RUNNING")
+				}
+
 				imgui.End()
 			}
 		},
@@ -282,5 +532,6 @@ func initDebugUI(storage *ecs.Storage, scheduler *ecs.Scheduler) {
 	spawnSimulationStatsWindow(storage)
 	spawnColonyInfoWindow(storage)
 	spawnSystemPerformanceWindow(storage, scheduler)
-	spawnPerformanceChartWindow(storage)
+	spawnPerformanceChartWindow(storage, scheduler)
+	spawnPauseControlWindow(storage)
 }

@@ -58,12 +58,10 @@ func (m *MetricsSystem) Execute(frame *ecs.UpdateFrame) {
 			perf.MaxFrameTime = max
 		}
 
-		if m.storageStatsCache == nil || perf.FrameTime > 0.1 {
-			m.storageStatsCache = frame.Storage.CollectStats()
-		}
-
-		perf.EntityCount = m.storageStatsCache.TotalEntityCount
-		perf.ArchetypeCount = m.storageStatsCache.ArchetypeCount
+		// Update storage stats every frame (they're cheap to collect)
+		stats := frame.Storage.CollectStats()
+		perf.EntityCount = stats.TotalEntityCount
+		perf.ArchetypeCount = stats.ArchetypeCount
 	}
 	m.lastTime = now
 
