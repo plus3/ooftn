@@ -9,10 +9,15 @@ type Commands struct {
 	deletes []EntityId
 	adds    []addComponentCommand
 	removes []removeComponentCommand
+	defers  []deferCommand
 }
 
 func newCommands() *Commands {
 	return &Commands{}
+}
+
+type deferCommand struct {
+	fn func()
 }
 
 type spawnCommand struct {
@@ -27,6 +32,11 @@ type addComponentCommand struct {
 type removeComponentCommand struct {
 	entity   EntityId
 	compType reflect.Type
+}
+
+// Defer queues a function execution operation.
+func (c *Commands) Defer(fn func()) {
+	c.defers = append(c.defers, deferCommand{fn: fn})
 }
 
 // Spawn queues an entity spawn operation with the given components.
@@ -80,8 +90,13 @@ func (c *Commands) Flush(storage *Storage) {
 		storage.Spawn(cmd.components...)
 	}
 
+	for _, df := range c.defers {
+		df.fn()
+	}
+
 	c.spawns = c.spawns[:0]
 	c.deletes = c.deletes[:0]
 	c.adds = c.adds[:0]
 	c.removes = c.removes[:0]
+	c.defers = c.defers[:0]
 }

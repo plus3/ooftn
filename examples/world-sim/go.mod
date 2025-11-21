@@ -3,6 +3,7 @@ module github.com/plus3/ooftn/examples/world-sim
 go 1.25.4
 
 require (
+	github.com/AllenDang/cimgui-go v1.4.0
 	github.com/hajimehoshi/ebiten/v2 v2.8.8
 	github.com/plus3/ooftn v0.0.3
 )

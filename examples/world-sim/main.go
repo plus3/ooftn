@@ -3,8 +3,12 @@ package main
 import (
 	"math/rand/v2"
 
+	ebitenbackend "github.com/AllenDang/cimgui-go/backend/ebiten-backend"
+	"github.com/AllenDang/cimgui-go/imgui"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/plus3/ooftn/ecs"
+	"github.com/plus3/ooftn/ecs/debugui"
+	debugui_ebiten "github.com/plus3/ooftn/ecs/debugui/ebiten"
 )
 
 const (
@@ -31,6 +35,10 @@ func main() {
 	ebiten.SetWindowTitle("World Simulator - ECS Example")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
+	imguiBackend := ebitenbackend.NewEbitenBackend()
+	imguiBackend.CreateWindow("backseas", ScreenWidth, ScreenHeight)
+	imgui.CurrentIO().SetIniFilename("")
+
 	registry := ecs.NewComponentRegistry()
 	ecs.RegisterComponent[Position](registry)
 	ecs.RegisterComponent[GridPosition](registry)
@@ -54,7 +62,15 @@ func main() {
 	ecs.RegisterComponent[Dead](registry)
 	ecs.RegisterComponent[Combat](registry)
 
+	ecs.RegisterComponent[debugui_ebiten.ImguiBackend](registry)
+	ecs.RegisterComponent[debugui.ImguiItem](registry)
+	ecs.RegisterComponent[debugui.ImguiInputState](registry)
+
 	storage := ecs.NewStorage(registry)
+
+	ecs.NewSingleton[debugui_ebiten.ImguiBackend](storage, debugui_ebiten.ImguiBackend{
+		EbitenBackend: imguiBackend,
+	})
 
 	ecs.NewSingleton[WorldConfig](storage, WorldConfig{
 		Width:    WorldWidth,
@@ -83,9 +99,18 @@ func main() {
 		Cells:    make(map[[2]int][]ecs.EntityId),
 	})
 
+	storage.Spawn(debugui.ImguiItem{
+		Render: func() {
+			imgui.Begin("test")
+			imgui.LabelText("hey", ":3")
+			imgui.End()
+		},
+	})
+
 	initWorld(storage)
 
 	scheduler := ecs.NewScheduler(storage)
+	scheduler.Register(&debugui.ImguiSystem{})
 	scheduler.Register(&TimeSystem{})
 	scheduler.Register(&ColonyManagementSystem{})
 	scheduler.Register(&TaskAssignmentSystem{})
@@ -99,13 +124,16 @@ func main() {
 	scheduler.Register(&DeathSystem{})
 	scheduler.Register(&CameraControlSystem{})
 
+	renderScheduler := ecs.NewScheduler(storage)
 	renderSystem := &RenderSystem{}
-	scheduler.Register(renderSystem)
+	renderScheduler.Register(renderSystem)
 
 	game := &Game{
-		Storage:      storage,
-		Scheduler:    scheduler,
-		RenderSystem: renderSystem,
+		Storage:         storage,
+		Scheduler:       scheduler,
+		RenderScheduler: renderScheduler,
+		RenderSystem:    renderSystem,
+		ImguiBackend:    ecs.NewSingleton[debugui_ebiten.ImguiBackend](storage),
 	}
 
 	if err := ebiten.RunGame(game); err != nil {
@@ -118,7 +146,9 @@ func (g *Game) Update() error {
 		return ebiten.Termination
 	}
 
+	g.ImguiBackend.Get().BeginFrame()
 	g.Scheduler.Once(1.0 / 60.0)
+	g.ImguiBackend.Get().EndFrame()
 	return nil
 }
 
@@ -130,10 +160,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	g.RenderSystem.screen = screen
-	g.Scheduler.Once(0)
+	g.RenderScheduler.Once(0)
+	g.ImguiBackend.Get().Draw(screen)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	g.ImguiBackend.Get().Layout(outsideWidth, outsideHeight)
 	return outsideWidth, outsideHeight
 }
 

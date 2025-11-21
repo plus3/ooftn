@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/plus3/ooftn/ecs"
+	debugui_ebiten "github.com/plus3/ooftn/ecs/debugui/ebiten"
 )
 
 type Position struct {
@@ -214,7 +215,9 @@ const (
 )
 
 type Game struct {
-	Storage      *ecs.Storage
-	Scheduler    *ecs.Scheduler
-	RenderSystem *RenderSystem
+	Storage         *ecs.Storage
+	Scheduler       *ecs.Scheduler
+	RenderScheduler *ecs.Scheduler
+	RenderSystem    *RenderSystem
+	ImguiBackend    *ecs.Singleton[debugui_ebiten.ImguiBackend]
 }

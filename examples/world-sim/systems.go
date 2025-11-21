@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/plus3/ooftn/ecs"
+	"github.com/plus3/ooftn/ecs/debugui"
 )
 
 type TimeSystem struct {
@@ -622,13 +623,21 @@ func (s *ResourceRegrowthSystem) Execute(frame *ecs.UpdateFrame) {
 }
 
 type CameraControlSystem struct {
-	Camera     ecs.Singleton[Camera]
-	InputState ecs.Singleton[InputState]
+	Camera          ecs.Singleton[Camera]
+	InputState      ecs.Singleton[InputState]
+	ImguiInputState ecs.Singleton[debugui.ImguiInputState]
 }
 
 func (s *CameraControlSystem) Execute(frame *ecs.UpdateFrame) {
 	camera := s.Camera.Get()
 	input := s.InputState.Get()
+
+	imguiInput := s.ImguiInputState.Get()
+
+	if imguiInput.WantCaptureMouse {
+		// reset input state?
+		return
+	}
 
 	mx, my := ebiten.CursorPosition()
 	mouseLeft := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
