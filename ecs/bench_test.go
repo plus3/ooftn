@@ -156,7 +156,7 @@ func BenchmarkViewIter(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, pv := range view.Iter() {
+		for pv := range view.Iter() {
 			_ = pv
 		}
 	}
@@ -179,7 +179,7 @@ func BenchmarkViewIterLarge(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, pv := range view.Iter() {
+		for pv := range view.Iter() {
 			_ = pv
 		}
 	}
@@ -265,7 +265,7 @@ func BenchmarkQueryIter(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, pv := range query.Iter() {
+		for pv := range query.Iter() {
 			_ = pv
 		}
 	}
@@ -288,7 +288,7 @@ func BenchmarkQueryIterLarge(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, pv := range query.Iter() {
+		for pv := range query.Iter() {
 			_ = pv
 		}
 	}
@@ -302,7 +302,7 @@ type benchMovementSystem struct {
 }
 
 func (s *benchMovementSystem) Execute(frame *ecs.UpdateFrame) {
-	for item := range s.Entities.Values() {
+	for item := range s.Entities.Iter() {
 		item.Position.X += item.Velocity.DX * float32(frame.DeltaTime)
 		item.Position.Y += item.Velocity.DY * float32(frame.DeltaTime)
 	}
@@ -315,7 +315,7 @@ type benchHealthSystem struct {
 }
 
 func (s *benchHealthSystem) Execute(frame *ecs.UpdateFrame) {
-	for item := range s.Entities.Values() {
+	for item := range s.Entities.Iter() {
 		if item.Health.Current < item.Health.Max {
 			item.Health.Current += int(1.0 * float32(frame.DeltaTime))
 		}

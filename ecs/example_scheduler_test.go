@@ -28,7 +28,7 @@ type PhysicsSystem struct {
 }
 
 func (s *PhysicsSystem) Execute(frame *ecs.UpdateFrame) {
-	for entity := range s.Entities.Values() {
+	for entity := range s.Entities.Iter() {
 		entity.Transform.X += entity.Speed.DX * float32(frame.DeltaTime)
 		entity.Transform.Y += entity.Speed.DY * float32(frame.DeltaTime)
 	}
@@ -40,7 +40,7 @@ type HealingSystem struct {
 }
 
 func (s *HealingSystem) Execute(frame *ecs.UpdateFrame) {
-	for entity := range s.Entities.Values() {
+	for entity := range s.Entities.Iter() {
 		if entity.Hitpoints.Current < entity.Hitpoints.Max {
 			entity.Hitpoints.Current += int(s.RegenRate * float32(frame.DeltaTime))
 			if entity.Hitpoints.Current > entity.Hitpoints.Max {
@@ -85,7 +85,7 @@ func ExampleScheduler() {
 	}](storage)
 
 	fmt.Println("After one frame:")
-	for _, item := range view.Iter() {
+	for item := range view.Iter() {
 		fmt.Printf("Position: (%.0f, %.0f), Health: %d/%d\n",
 			item.Transform.X, item.Transform.Y,
 			item.Hitpoints.Current, item.Hitpoints.Max)
@@ -120,4 +120,78 @@ func ExampleScheduler_Run() {
 	fmt.Println("Scheduler stopped")
 	// Output:
 	// Scheduler stopped
+}
+
+type GameTime struct {
+	TotalFrames int
+	TotalTime   float64
+}
+
+type TimeTracker struct {
+	Entities ecs.Query[struct{ *Transform }]
+	GameTime ecs.Singleton[GameTime]
+}
+
+func (s *TimeTracker) Execute(frame *ecs.UpdateFrame) {
+	gameTime := s.GameTime.Get()
+	gameTime.TotalFrames++
+	gameTime.TotalTime += frame.DeltaTime
+}
+
+type ScoreTracker struct {
+	Points int
+}
+
+type ScoreSystem struct {
+	Entities ecs.Query[struct{ *Transform }]
+	Score    ecs.Singleton[ScoreTracker]
+}
+
+func (s *ScoreSystem) Execute(frame *ecs.UpdateFrame) {
+	count := 0
+	for range s.Entities.Iter() {
+		count++
+	}
+	s.Score.Get().Points += count * 10
+}
+
+// ExampleScheduler_withSingletons demonstrates using singleton components in systems.
+// Singleton fields are automatically initialized by the Scheduler, just like Query fields.
+// This provides efficient access to global state without the iteration overhead of queries.
+func ExampleScheduler_withSingletons() {
+	registry := ecs.NewComponentRegistry()
+	ecs.RegisterComponent[Transform](registry)
+	storage := ecs.NewStorage(registry)
+
+	// Initialize singletons
+	ecs.NewSingleton[GameTime](storage, GameTime{TotalFrames: 0, TotalTime: 0})
+	ecs.NewSingleton[ScoreTracker](storage, ScoreTracker{Points: 0})
+
+	// Spawn entities
+	storage.Spawn(Transform{X: 0, Y: 0})
+	storage.Spawn(Transform{X: 10, Y: 10})
+	storage.Spawn(Transform{X: 20, Y: 20})
+
+	// Create scheduler with systems that use singletons
+	scheduler := ecs.NewScheduler(storage)
+	scheduler.Register(&TimeTracker{})
+	scheduler.Register(&ScoreSystem{})
+
+	// Run for 3 frames
+	scheduler.Once(0.016)
+	scheduler.Once(0.016)
+	scheduler.Once(0.016)
+
+	// Check singleton values
+	var gameTime *GameTime
+	storage.ReadSingleton(&gameTime)
+	fmt.Printf("Frames: %d, Time: %.3f\n", gameTime.TotalFrames, gameTime.TotalTime)
+
+	var score *ScoreTracker
+	storage.ReadSingleton(&score)
+	fmt.Printf("Score: %d points\n", score.Points)
+
+	// Output:
+	// Frames: 3, Time: 0.048
+	// Score: 90 points
 }

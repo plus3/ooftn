@@ -126,7 +126,7 @@ func TestCommands(t *testing.T) {
 		}](storage)
 
 		found := false
-		for item := range view.Values() {
+		for item := range view.Iter() {
 			if item.Position.X == 1 && item.Position.Y == 2 {
 				if item.Velocity.DX == 5 && item.Velocity.DY == 10 {
 					found = true
@@ -161,7 +161,7 @@ func TestCommands(t *testing.T) {
 		viewWithoutVelocity := ecs.NewView[struct{ *Position }](storage)
 		countWithoutVelocity := 0
 		foundCorrectEntity := false
-		for item := range viewWithoutVelocity.Values() {
+		for item := range viewWithoutVelocity.Iter() {
 			countWithoutVelocity++
 			if item.Position.X == 1 && item.Position.Y == 2 {
 				foundCorrectEntity = true

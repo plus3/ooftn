@@ -208,7 +208,7 @@ type {{.Name}} struct{
 }
 
 func (s *{{.Name}}) Execute(frame *ecs.UpdateFrame) {
-	for entity := range s.Entities.Values() {
+	for entity := range s.Entities.Iter() {
 		{{- range .Components}}
 			{{- $compName := .Name}}
 			{{- range .Fields}}

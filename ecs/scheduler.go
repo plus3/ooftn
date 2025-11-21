@@ -53,18 +53,31 @@ func (s *Scheduler) initializeQueries(system System) {
 
 		typeName := field.Type().Name()
 
-		if !strings.HasPrefix(typeName, "Query[") {
+		// Initialize Query fields
+		if strings.HasPrefix(typeName, "Query[") {
+			initMethod := field.Addr().MethodByName("Init")
+			if !initMethod.IsValid() {
+				panic("Init method not found on Query field: " + fieldType.Name)
+			}
+
+			initMethod.Call([]reflect.Value{
+				reflect.ValueOf(s.storage),
+			})
 			continue
 		}
 
-		initMethod := field.Addr().MethodByName("Init")
-		if !initMethod.IsValid() {
-			panic("Init method not found on Query field: " + fieldType.Name)
-		}
+		// Initialize Singleton fields
+		if strings.HasPrefix(typeName, "Singleton[") {
+			initMethod := field.Addr().MethodByName("Init")
+			if !initMethod.IsValid() {
+				panic("Init method not found on Singleton field: " + fieldType.Name)
+			}
 
-		initMethod.Call([]reflect.Value{
-			reflect.ValueOf(s.storage),
-		})
+			initMethod.Call([]reflect.Value{
+				reflect.ValueOf(s.storage),
+			})
+			continue
+		}
 	}
 }
 

@@ -47,7 +47,7 @@ func ExampleArchetype_Compact() {
 
 	fmt.Println("\nAfter compaction:")
 	count = 0
-	for _, item := range view.Iter() {
+	for item := range view.Iter() {
 		fmt.Printf("Position: (%.0f, %.0f)\n", item.Position.X, item.Position.Y)
 		count++
 	}

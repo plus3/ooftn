@@ -30,7 +30,7 @@ func ExampleQuery() {
 		x, y, newX, newY float32
 	}
 	results := make([]result, 0)
-	for _, item := range query.Iter() {
+	for item := range query.Iter() {
 		newX := item.Position.X + item.Velocity.DX
 		newY := item.Position.Y + item.Velocity.DY
 		results = append(results, result{item.Position.X, item.Position.Y, newX, newY})
