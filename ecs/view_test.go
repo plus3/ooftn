@@ -34,7 +34,7 @@ func TestViewMultipleComponents(t *testing.T) {
 	entityId := storage.Spawn(
 		&Position{X: 10, Y: 20},
 		&Velocity{DX: 1.5, DY: 2.5},
-		&Name{Value: "Test Entity"},
+		Name("Test Entity"),
 	)
 
 	view := ecs.NewView[struct {
@@ -49,7 +49,7 @@ func TestViewMultipleComponents(t *testing.T) {
 	assert.Equal(t, float32(20), item.Position.Y)
 	assert.Equal(t, float32(1.5), item.Velocity.DX)
 	assert.Equal(t, float32(2.5), item.Velocity.DY)
-	assert.Equal(t, "Test Entity", item.Name.Value)
+	assert.Equal(t, Name("Test Entity"), *item.Name)
 }
 
 func TestViewMissingComponent(t *testing.T) {
@@ -206,7 +206,7 @@ func TestViewSubset(t *testing.T) {
 	entityId := storage.Spawn(
 		&Position{X: 5, Y: 5},
 		&Velocity{DX: 1, DY: 1},
-		&Name{Value: "Extra"},
+		Name("Extra"),
 		&Health{Current: 100, Max: 100},
 	)
 
@@ -286,8 +286,8 @@ func TestViewIterMultipleArchetypes(t *testing.T) {
 	id1 := storage.Spawn(&Position{X: 1, Y: 1}, &Velocity{DX: 0.1, DY: 0.1})
 	id2 := storage.Spawn(&Position{X: 2, Y: 2}, &Velocity{DX: 0.2, DY: 0.2})
 
-	id3 := storage.Spawn(&Position{X: 3, Y: 3}, &Velocity{DX: 0.3, DY: 0.3}, &Name{Value: "Entity3"})
-	id4 := storage.Spawn(&Position{X: 4, Y: 4}, &Velocity{DX: 0.4, DY: 0.4}, &Name{Value: "Entity4"})
+	id3 := storage.Spawn(&Position{X: 3, Y: 3}, &Velocity{DX: 0.3, DY: 0.3}, Name("Entity3"))
+	id4 := storage.Spawn(&Position{X: 4, Y: 4}, &Velocity{DX: 0.4, DY: 0.4}, Name("Entity4"))
 
 	storage.Spawn(&Position{X: 99, Y: 99})
 
@@ -988,7 +988,7 @@ func TestViewSpawnManyComponents(t *testing.T) {
 		Position: &Position{X: 10, Y: 20},
 		Velocity: &Velocity{DX: 1, DY: 2},
 		Health:   &Health{Current: 80, Max: 100},
-		Name:     &Name{Value: "TestEntity"},
+		Name:     ptr(Name("TestEntity")),
 	})
 
 	item := view.Get(entityId)
@@ -996,7 +996,7 @@ func TestViewSpawnManyComponents(t *testing.T) {
 	assert.Equal(t, float32(10), item.Position.X)
 	assert.Equal(t, float32(1), item.Velocity.DX)
 	assert.Equal(t, 80, item.Health.Current)
-	assert.Equal(t, "TestEntity", item.Name.Value)
+	assert.Equal(t, Name("TestEntity"), *item.Name)
 }
 
 func TestViewSpawnIterateSpawnedEntities(t *testing.T) {
@@ -1057,7 +1057,7 @@ func TestViewWithPointerComponents(t *testing.T) {
 
 	storage := ecs.NewStorage(newTestRegistry())
 
-	enemy := &Name{Value: "Boss"}
+	enemy := ptr(Name("Boss"))
 	id := storage.Spawn(&Position{X: 5.0, Y: 10.0}, &Target{Enemy: enemy})
 
 	view := ecs.NewView[struct {
@@ -1069,7 +1069,7 @@ func TestViewWithPointerComponents(t *testing.T) {
 	assert.NotNil(t, item)
 	assert.Equal(t, float32(5.0), item.Position.X)
 	assert.NotNil(t, item.Target.Enemy)
-	assert.Equal(t, "Boss", item.Target.Enemy.Value)
+	assert.Equal(t, Name("Boss"), *item.Target.Enemy)
 }
 
 func TestViewIterWithPointerComponents(t *testing.T) {

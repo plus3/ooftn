@@ -11,9 +11,7 @@ type Velocity struct {
 	DX, DY float32
 }
 
-type Name struct {
-	Value string
-}
+type Name string
 
 type Health struct {
 	Current int
@@ -58,6 +56,10 @@ type Outer struct {
 }
 type RefComponent struct {
 	Ref *Position
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 func newTestRegistry() *ecs.ComponentRegistry {

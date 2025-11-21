@@ -56,7 +56,7 @@ func TestGetComponent(t *testing.T) {
 
 	storage := ecs.NewStorage(newTestRegistry())
 
-	id := storage.Spawn(&Position{X: 3.0, Y: 4.0}, &Name{Value: "Test Entity"})
+	id := storage.Spawn(&Position{X: 3.0, Y: 4.0}, Name("Test Entity"))
 
 	// Get Position component
 	posComp := storage.GetComponent(id, reflect.TypeOf(Position{}))
@@ -66,10 +66,10 @@ func TestGetComponent(t *testing.T) {
 	assert.Equal(t, float32(4.0), pos.Y)
 
 	// Get Name component
-	nameComp := storage.GetComponent(id, reflect.TypeOf(Name{}))
+	nameComp := storage.GetComponent(id, reflect.TypeOf(Name("")))
 	assert.NotNil(t, nameComp)
 	name := nameComp.(*Name)
-	assert.Equal(t, "Test Entity", name.Value)
+	assert.Equal(t, Name("Test Entity"), *name)
 
 	// Try to get non-existent component
 	velocityComp := storage.GetComponent(id, reflect.TypeOf(Velocity{}))
@@ -128,7 +128,7 @@ func TestMultipleDifferentArchetypes(t *testing.T) {
 
 	id1 := storage.Spawn(&Position{X: 1.0, Y: 1.0})
 	id2 := storage.Spawn(&Position{X: 2.0, Y: 2.0}, &Velocity{DX: 0.1, DY: 0.1})
-	id3 := storage.Spawn(&Position{X: 3.0, Y: 3.0}, &Name{Value: "Entity 3"})
+	id3 := storage.Spawn(&Position{X: 3.0, Y: 3.0}, Name("Entity 3"))
 	id4 := storage.Spawn(&Health{Current: 50, Max: 100})
 
 	// All should have different archetype IDs
@@ -145,7 +145,7 @@ func TestMultipleDifferentArchetypes(t *testing.T) {
 
 	assert.NotNil(t, storage.GetComponent(id2, reflect.TypeOf(Position{})))
 	assert.NotNil(t, storage.GetComponent(id2, reflect.TypeOf(Velocity{})))
-	assert.Nil(t, storage.GetComponent(id2, reflect.TypeOf(Name{})))
+	assert.Nil(t, storage.GetComponent(id2, reflect.TypeOf(Name(""))))
 
 	assert.NotNil(t, storage.GetComponent(id4, reflect.TypeOf(Health{})))
 	assert.Nil(t, storage.GetComponent(id4, reflect.TypeOf(Position{})))
@@ -159,7 +159,7 @@ func TestHasComponent(t *testing.T) {
 
 	assert.True(t, storage.HasComponent(id, reflect.TypeOf(Position{})))
 	assert.True(t, storage.HasComponent(id, reflect.TypeOf(Velocity{})))
-	assert.False(t, storage.HasComponent(id, reflect.TypeOf(Name{})))
+	assert.False(t, storage.HasComponent(id, reflect.TypeOf(Name(""))))
 	assert.False(t, storage.HasComponent(id, reflect.TypeOf(Health{})))
 }
 
@@ -248,9 +248,9 @@ func TestComponentTypeOrderIndependence(t *testing.T) {
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Spawn entities with same components but in different order
-	id1 := storage.Spawn(&Position{X: 1.0, Y: 1.0}, &Velocity{DX: 0.1, DY: 0.1}, &Name{Value: "A"})
-	id2 := storage.Spawn(&Velocity{DX: 0.2, DY: 0.2}, &Name{Value: "B"}, &Position{X: 2.0, Y: 2.0})
-	id3 := storage.Spawn(&Name{Value: "C"}, &Position{X: 3.0, Y: 3.0}, &Velocity{DX: 0.3, DY: 0.3})
+	id1 := storage.Spawn(&Position{X: 1.0, Y: 1.0}, &Velocity{DX: 0.1, DY: 0.1}, Name("A"))
+	id2 := storage.Spawn(&Velocity{DX: 0.2, DY: 0.2}, Name("B"), &Position{X: 2.0, Y: 2.0})
+	id3 := storage.Spawn(Name("C"), &Position{X: 3.0, Y: 3.0}, &Velocity{DX: 0.3, DY: 0.3})
 
 	// All should have the same archetype ID (components are sorted internally)
 	assert.Equal(t, id1.ArchetypeId(), id2.ArchetypeId())
@@ -307,7 +307,7 @@ func TestMixedStructAndPrimitiveComponents(t *testing.T) {
 	storage := ecs.NewStorage(newTestRegistry())
 
 	// Mix struct pointers and primitive values
-	id := storage.Spawn(&Position{X: 10, Y: 20}, Score(100), &Name{Value: "test"})
+	id := storage.Spawn(&Position{X: 10, Y: 20}, Score(100), Name("test"))
 
 	// Verify all components
 	pos := storage.GetComponent(id, reflect.TypeOf(Position{})).(*Position)
@@ -316,8 +316,8 @@ func TestMixedStructAndPrimitiveComponents(t *testing.T) {
 	score := storage.GetComponent(id, reflect.TypeOf(Score(0))).(*Score)
 	assert.Equal(t, Score(100), *score)
 
-	name := storage.GetComponent(id, reflect.TypeOf(Name{})).(*Name)
-	assert.Equal(t, "test", name.Value)
+	name := storage.GetComponent(id, reflect.TypeOf(Name(""))).(*Name)
+	assert.Equal(t, Name("test"), *name)
 }
 
 func TestPrimitiveMutation(t *testing.T) {
@@ -451,7 +451,7 @@ func TestRemoveComponentWithEntityRef(t *testing.T) {
 
 	storage := ecs.NewStorage(newTestRegistry())
 
-	id := storage.Spawn(&Position{X: 5.0, Y: 10.0}, &Velocity{DX: 1.0, DY: 1.0}, &Name{Value: "test"})
+	id := storage.Spawn(&Position{X: 5.0, Y: 10.0}, &Velocity{DX: 1.0, DY: 1.0}, Name("test"))
 	ref := storage.CreateEntityRef(id)
 
 	storage.RemoveComponent(id, reflect.TypeOf(Velocity{}))
@@ -462,8 +462,8 @@ func TestRemoveComponentWithEntityRef(t *testing.T) {
 	pos := storage.GetComponent(resolvedId, reflect.TypeOf(Position{})).(*Position)
 	assert.Equal(t, float32(5.0), pos.X)
 
-	name := storage.GetComponent(resolvedId, reflect.TypeOf(Name{})).(*Name)
-	assert.Equal(t, "test", name.Value)
+	name := storage.GetComponent(resolvedId, reflect.TypeOf(Name(""))).(*Name)
+	assert.Equal(t, Name("test"), *name)
 
 	vel := storage.GetComponent(resolvedId, reflect.TypeOf(Velocity{}))
 	assert.Nil(t, vel)
@@ -539,7 +539,7 @@ func TestMixedPointerAndValueComponents(t *testing.T) {
 
 	storage := ecs.NewStorage(newTestRegistry())
 
-	enemy := &Name{Value: "Dragon"}
+	enemy := ptr(Name("Dragon"))
 	id := storage.Spawn(&Position{X: 1.0, Y: 2.0}, &Target{Enemy: enemy})
 
 	pos := storage.GetComponent(id, reflect.TypeOf(Position{})).(*Position)
@@ -547,7 +547,7 @@ func TestMixedPointerAndValueComponents(t *testing.T) {
 
 	target := storage.GetComponent(id, reflect.TypeOf(Target{})).(*Target)
 	assert.NotNil(t, target.Enemy)
-	assert.Equal(t, "Dragon", target.Enemy.Value)
+	assert.Equal(t, Name("Dragon"), *target.Enemy)
 }
 
 func TestPointerComponentWithEntityRef(t *testing.T) {

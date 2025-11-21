@@ -27,7 +27,7 @@ func BenchmarkSpawnWithMultipleComponents(b *testing.B) {
 			Position{X: 1.0, Y: 2.0},
 			Velocity{DX: 0.5, DY: 0.5},
 			Health{Current: 100, Max: 100},
-			Name{Value: "Entity"},
+			Name("Entity"),
 		)
 	}
 }
