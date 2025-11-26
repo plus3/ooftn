@@ -68,21 +68,47 @@ func (c *Commands) RemoveComponent(entity EntityId, compType reflect.Type) {
 // Flush flushes all commands to the provided storage, reseting the buffer state
 func (c *Commands) Flush(storage *Storage) {
 	deletedEntities := make(map[EntityId]bool)
+	movedEntities := make(map[EntityId]EntityId)
+
+	// resolveId follows the chain of entity ID migrations to find the current ID
+	resolveId := func(id EntityId) EntityId {
+		for {
+			if newId, moved := movedEntities[id]; moved {
+				id = newId
+			} else {
+				return id
+			}
+		}
+	}
 
 	for _, cmd := range c.deletes {
-		storage.Delete(cmd)
+		currentId := resolveId(cmd)
+		storage.Delete(currentId)
 		deletedEntities[cmd] = true
+		deletedEntities[currentId] = true
 	}
 
 	for _, cmd := range c.removes {
-		if !deletedEntities[cmd.entity] {
-			storage.RemoveComponent(cmd.entity, cmd.compType)
+		currentId := resolveId(cmd.entity)
+		if !deletedEntities[currentId] {
+			newId := storage.RemoveComponent(currentId, cmd.compType)
+			if newId != 0 && newId != currentId {
+				movedEntities[currentId] = newId
+			} else if newId == 0 {
+				// Entity was deleted (no components left)
+				deletedEntities[currentId] = true
+				deletedEntities[cmd.entity] = true
+			}
 		}
 	}
 
 	for _, cmd := range c.adds {
-		if !deletedEntities[cmd.entity] {
-			storage.AddComponent(cmd.entity, cmd.component)
+		currentId := resolveId(cmd.entity)
+		if !deletedEntities[currentId] {
+			newId := storage.AddComponent(currentId, cmd.component)
+			if newId != currentId {
+				movedEntities[currentId] = newId
+			}
 		}
 	}
 
